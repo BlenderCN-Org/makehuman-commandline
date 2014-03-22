@@ -38,7 +38,7 @@ Implements the command-line version of MakeHuman.
 """
 
 from core import G
-import gui3d
+import guicommon
 from human import Human
 import files3d
 import getpath
@@ -171,7 +171,7 @@ def addproxy(human, mhclofile, type):
     mesh.material = _proxy.material
     mesh.priority = _proxy.z_depth           # Set render order
 
-    obj = gui3d.Object(mesh, human.getPosition())
+    obj = guicommon.Object(mesh, human.getPosition())
     obj.setRotation(human.getRotation())
 
     #self.adaptProxyToHuman(_proxy, obj)
