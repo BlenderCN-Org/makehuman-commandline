@@ -53,19 +53,8 @@ from armature.options import ArmatureOptions
 
 import sys
 sys.path.append("./plugins")
-ExporterMHX = (__import__("9_export_mhx", fromlist = ["ExporterMHX"])).ExporterMHX
-
-class dummytaskview():
-    def enterPoseMode(self):
-        pass
-    def exitPoseMode(self):
-        pass
-    def getScale(self):
-        return (0.1, "meter")
-
-class dummyselected():
-    def __init__(self, value = True):
-        self.selected = value
+MhxConfig = (__import__("9_export_mhx", fromlist = ["MhxConfig"])).MhxConfig
+MHXExporter = (__import__("9_export_mhx", fromlist = ["mhx_main"])).mhx_main
 
 class ConsoleApp():
     def __init__(self):
@@ -134,20 +123,18 @@ def run(args):
         save(human, args["output"])
 
 def save(human, filepath):
-
     if not filepath.endswith("mhx"):
         raise RuntimeError("Only MHX export is currently supported")
 
     ## Export
-    def filename(nop):
-        return filepath
-
-    exporter = ExporterMHX()
-    exporter.taskview = dummytaskview()
-    exporter.feetOnGround = dummyselected(True)
-    exporter.useRotationLimits = dummyselected(True)
-    exporter.useRigify = dummyselected(False)
-    exporter.export(human, filename)
+    exportCfg = MhxConfig()
+    exportCfg.scale = 0.1
+    exportCfg.unit = "meter"
+    exportCfg.feetOnGround = True
+    exportCfg.useRotationLimits = True
+    exportCfg.useRigify = False
+    exportCfg.setHuman(human)
+    MHXExporter.exportMhx(filepath, exportCfg)
 
 def addproxy(human, mhclofile, type):
     import os
