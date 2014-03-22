@@ -41,7 +41,7 @@ from core import G
 import gui3d
 from human import Human
 import files3d
-import mh
+import getpath
 import humanmodifier
 import material
 import proxy
@@ -78,7 +78,7 @@ class dummyapp():
 
 def run(args):
 
-    human = Human(files3d.loadMesh(mh.getSysDataPath("3dobjs/base.obj"), maxFaces = 5))
+    human = Human(files3d.loadMesh(getpath.getSysDataPath("3dobjs/base.obj"), maxFaces = 5))
 
     G.app = dummyapp(human)
     gui3d.app = dummyapp(human)
