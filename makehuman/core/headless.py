@@ -67,9 +67,9 @@ class dummyselected():
     def __init__(self, value = True):
         self.selected = value
 
-class dummyapp():
-    def __init__(self,human):
-        self.selectedHuman = human
+class ConsoleApp():
+    def __init__(self):
+        self.selectedHuman = Human(files3d.loadMesh(getpath.getSysDataPath("3dobjs/base.obj"), maxFaces = 5))
         self.log_window = None
         self.splash = None
         self.statusBar = None
@@ -78,10 +78,8 @@ class dummyapp():
         pass
 
 def run(args):
-
-    human = Human(files3d.loadMesh(getpath.getSysDataPath("3dobjs/base.obj"), maxFaces = 5))
-
-    G.app = dummyapp(human)
+    G.app = ConsoleApp()
+    human = G.app.selectedHuman
 
     modifiers = [("macrodetails", "Age"),
                  ("macrodetails", "Gender"),
