@@ -39,6 +39,7 @@ Implements the command-line version of MakeHuman.
 
 from core import G
 import guicommon
+import log
 from human import Human
 import files3d
 import getpath
@@ -151,7 +152,10 @@ def save(human, filepath):
     exporter.export(human, filename)
 
 def addproxy(human, mhclofile, type):
-    # TODO protect against file not found errors
+    import os
+    if not os.path.isfile(mhclofile):
+        log.error("Proxy file %s does not exist (%s).", mhclofile, type)
+        return
 
     if type not in ["proxymeshes", "hair"]:
         raise RuntimeError("Unknown proxy type %s" % type)
