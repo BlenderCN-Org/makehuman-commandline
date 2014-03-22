@@ -348,7 +348,7 @@ def parse_arguments():
     parser.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
     parser.add_argument("--rig", default=None, help="Setup a rig. One of [basic, game, muscles, humanik, xonotic, second_life, second_life_bones] (default: none)")
     parser.add_argument("--lowres", action="store_true", help="Adds a lowresolution proxy (typically for games)")
-    parser.add_argument("--hairs", default="mhair01/mhair01", help="Polygonal hair model (see MakeHuman hairs for a list, defaults to mhair01/mhair01)")
+    parser.add_argument("--hairs", default=None, help="Polygonal hair model (see MakeHuman hairs for a list, defaults to mhair01/mhair01)")
 
     argOptions = vars(parser.parse_args())
     if argOptions["male"]:
@@ -395,7 +395,7 @@ def main():
     from mhmain import MHApplication
 
     # -o or --output option given -> run in headless mode
-    if "output" in args:
+    if args.get("output", None):
         import headless
         headless.run(args)
     else:
