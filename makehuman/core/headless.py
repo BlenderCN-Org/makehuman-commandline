@@ -81,7 +81,6 @@ def run(args):
     human = Human(files3d.loadMesh(getpath.getSysDataPath("3dobjs/base.obj"), maxFaces = 5))
 
     G.app = dummyapp(human)
-    gui3d.app = dummyapp(human)
 
     modifiers = [("macrodetails", "Age"),
                  ("macrodetails", "Gender"),
@@ -89,10 +88,11 @@ def run(args):
                  ("macrodetails", "African"),
                  ("macrodetails", "Asian")]
 
+    # TODO properly construct modifiers if not inited by plugin
     for cat, var in modifiers:
-        modifier = humanmodifier.MacroModifier(cat, var)
-        modifier.setHuman(human)
-        human.addModifier(modifier)
+        if '%s/%s' % (cat, var) not in human.modifierNames:
+            modifier = humanmodifier.MacroModifier(cat, var)
+            modifier.setHuman(human)
 
     human.setAgeYears(args["age"])
 
@@ -131,7 +131,8 @@ def run(args):
     if args["lowres"]:
         addproxy(human, "data/proxymeshes/proxy741/proxy741.proxy", "proxymeshes")
 
-    save(human, args["output"])
+    if args["output"]:
+        save(human, args["output"])
 
 def save(human, filepath):
 
@@ -150,6 +151,7 @@ def save(human, filepath):
     exporter.export(human, filename)
 
 def addproxy(human, mhclofile, type):
+    # TODO protect against file not found errors
 
     if type not in ["proxymeshes", "hair"]:
         raise RuntimeError("Unknown proxy type %s" % type)
