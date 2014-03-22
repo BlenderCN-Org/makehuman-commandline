@@ -122,6 +122,13 @@ def run(args):
     if args["output"]:
         save(human, args["output"])
 
+
+    # A little debug test
+    if 'PyOpenGL' in sys.modules.keys():
+        log.warning("Debug test detected that OpenGL libraries were imported in the console version! This indicates bad separation from GUI.")
+    if 'PyQt4' in sys.modules.keys():
+        log.warning("Debug test detected that Qt libraries were imported in the console version! This indicates bad separation from GUI.")
+
 def save(human, filepath):
     if not filepath.endswith("mhx"):
         raise RuntimeError("Only MHX export is currently supported")

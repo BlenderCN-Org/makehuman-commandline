@@ -391,14 +391,16 @@ def main():
         # Suppress runtime errors
         numpy.seterr(all = 'ignore')
 
-    # Here pyQt and PyOpenGL will be imported
-    from mhmain import MHApplication
-
     # -o or --output option given -> run in headless mode
-    if args.get("output", None):
+    runHeadless = bool( args.get("output", None) )
+
+    if runHeadless:
         import headless
         headless.run(args)
     else:
+        # Here pyQt and PyOpenGL will be imported
+        from mhmain import MHApplication
+
         application = MHApplication()
         application.run()
 
