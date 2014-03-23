@@ -318,26 +318,24 @@ def debug_dump():
         import log
         log.error("Could not create debug dump", exc_info=True)
 
+ADVANCED_ARGS = True
 def parse_arguments():
     if len(sys.argv) < 2:
         return dict()
 
-    print sys.argv
-
     import argparse    # requires python >= 2.7
     parser = argparse.ArgumentParser(description="MakeHuman, an open source tool for making 3D characters", epilog="MakeHuman - http://www.makehuman.org")
 
-    # Input argument
-    # Can no longer be an optional positional argument as this conflicts with subcommands
-    inputGroup = parser.add_argument_group('Input file', description="Specify an input file to load the human from")
-    inputGroup.add_argument("-i","--inputMhm", metavar="mhmFile", default=None, nargs='?', help="Load human from .mhm file (optional)")
+    # Input argument (optional positional argument)
+    parser.add_argument("mhmFile", default=None, nargs='?', help="Load human from .mhm file (optional)")
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
 
-    # headless options
-    headlessGroup = parser.add_argument_group('Headless options', description="Result in no-GUI mode operation")
-    headlessGroup.add_argument("-o", "--output", default=None, nargs='?', help="File to export to, extension determines format. If set, no GUI is started.")
+    if ADVANCED_ARGS:
+        # Output options
+        outputGroup = parser.add_argument_group('Output options', description="Result in no-GUI mode operation")
+        outputGroup.add_argument("-o", "--output", default=None, help="File to export to, extension determines format. If set, no GUI is started.")
 
     # Debug options
     debugGroup = parser.add_argument_group('Debug options', description="For testing, debugging and problem solving")
@@ -349,36 +347,14 @@ def parse_arguments():
     if not isRelease():
         debugGroup.add_argument("-t", "--runtests", action="store_true", help="run test suite (for developers)")
 
-    # Macro properties
-    macroGroup = parser.add_argument_group('Macro properties', description="Optional macro properties to set on human")
-    macroGroup.add_argument("--age", default=25, type=float, help="Human age, in years")
-    macroGroup.add_argument("--gender", default=0.5, type=float, help="Human gender (0.0: female, 1.0: male)")
-    macroGroup.add_argument("--male", action="store_true", help="Produces a male character (overrides the gender argument)")
-    macroGroup.add_argument("--female", action="store_true", help="Produces a female character (overrides the gender argument)")
-    macroGroup.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
-    macroGroup.add_argument("--rig", default=None, help="Setup a rig. One of [basic, game, muscles, humanik, xonotic, second_life, second_life_bones] (default: none)") # TODO dynamically list
+    if ADVANCED_ARGS:
+        import humanargparser
+        humanargparser.addModelingArguments(parser)
 
-    # Modifier paremters
-    modGroup = parser.add_argument_group('Modifiers loading')
-    modGroup.add_argument("--listmodifiers", action="store_true", help="List all modifier names")
-    modGroup.add_argument("-m","--modifier", nargs=2, metavar=("modifierName","value"), action="append", help="Specify a modifier and its value to apply to the human, in '<modifierName>:<value>' format")
-
-    # Proxies
-    proxyGroup = parser.add_argument_group('Proxy mesh specification')
-    proxyGroup.add_argument("--listproxytypes", action="store_true", help="List the available proxy type names")
-    modGroup.add_argument("--listproxies", metavar="proxyType", help="List all proxy files of specified proxy type")
-    proxyGroup.add_argument("-p","--proxy", nargs=2, metavar=("proxyType","proxyFile"), action="append", help="Load a proxy of a specific type")
-
-
-    # Perform some validation on the input
     argOptions = vars(parser.parse_args())
-    if argOptions["male"]:
-        argOptions["gender"] = 0.9
-    elif argOptions["female"]:
-        argOptions["gender"] = 0.1
 
-    print argOptions
-    sys.exit()
+    if ADVANCED_ARGS:
+        humanargparser.validate(argOptions)
 
     return argOptions
 
