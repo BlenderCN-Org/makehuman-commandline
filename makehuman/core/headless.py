@@ -8,7 +8,7 @@
 
 **Code Home Page:**    https://bitbucket.org/MakeHuman/makehuman/
 
-**Authors:**           Séverin Lemaignan
+**Authors:**           Séverin Lemaignan, Jonas Hauquier
 
 **Copyright(c):**      MakeHuman Team 2001-2014
 
@@ -47,9 +47,6 @@ import humanmodifier
 import material
 import proxy
 
-# skeleton imports
-import skeleton
-from armature.options import ArmatureOptions
 
 import sys
 sys.path.append("./plugins")
@@ -70,54 +67,9 @@ def run(args):
     G.app = ConsoleApp()
     human = G.app.selectedHuman
 
-    modifiers = [("macrodetails", "Age"),
-                 ("macrodetails", "Gender"),
-                 ("macrodetails", "Caucasian"),
-                 ("macrodetails", "African"),
-                 ("macrodetails", "Asian")]
+    import humanargparser
+    humanargparser.applyModelingArguments(human, args)
 
-    # TODO properly construct modifiers if not inited by plugin
-    for cat, var in modifiers:
-        if '%s/%s' % (cat, var) not in human.modifierNames:
-            modifier = humanmodifier.MacroModifier(cat, var)
-            modifier.setHuman(human)
-
-    human.setAgeYears(args["age"])
-
-    human.setGender(args["gender"])
-
-    if args["race"] == "caucasian":
-        human.setCaucasian(0.9)
-    elif args["race"] == "african":
-        human.setAfrican(0.9)
-    elif args["race"] == "asian":
-        human.setAsian(0.9)
-    else:
-        raise RuntimeError("Unknown race %s. Must be one of [caucasian, african, asian]" % args["race"])
-
-
-    dominant_gender = "female" if args["gender"] < 0.5 else "male"
-    human.material = material.fromFile('data/skins/young_%s_%s/young_%s_%s.mhmat'%(
-        args["race"], 
-        dominant_gender, 
-        args["race"],
-        dominant_gender))
-
-    ### Skeleton
-    if args["rig"]:
-        armature_options = ArmatureOptions()
-        descr = armature_options.loadPreset('data/rigs/%s.json' % args["rig"], None)
-        # Load skeleton definition from options
-        human._skeleton, boneWeights = skeleton.loadRig(armature_options, human.meshData)
-        human._skeleton.options = armature_options
-        def fn():
-            return human._skeleton
-        human.getSkeleton = fn
-
-    if args["hairs"]:
-        addproxy(human, "data/hair/%s.mhclo" % args["hairs"], "hair")
-    if args["lowres"]:
-        addproxy(human, "data/proxymeshes/proxy741/proxy741.proxy", "proxymeshes")
 
     if args["output"]:
         save(human, args["output"])
@@ -127,7 +79,7 @@ def run(args):
     if 'PyOpenGL' in sys.modules.keys():
         log.warning("Debug test detected that OpenGL libraries were imported in the console version! This indicates bad separation from GUI.")
     if 'PyQt4' in sys.modules.keys():
-        log.warning("Debug test detected that Qt libraries were imported in the console version! This indicates bad separation from GUI.")
+        log.warning("Debug test detected that Qt libraries were imported in the console version! This might indicate bad separation from GUI, but is currently normal because MH uses Qt as (only) back-end for loading images.")
 
 def save(human, filepath):
     if not filepath.endswith("mhx"):
@@ -142,40 +94,4 @@ def save(human, filepath):
     exportCfg.useRigify = False
     exportCfg.setHuman(human)
     MHXExporter.exportMhx(filepath, exportCfg)
-
-def addproxy(human, mhclofile, type):
-    import os
-    if not os.path.isfile(mhclofile):
-        log.error("Proxy file %s does not exist (%s).", mhclofile, type)
-        return
-
-    if type not in ["proxymeshes", "hair"]:
-        raise RuntimeError("Unknown proxy type %s" % type)
-
-    _proxy = proxy.readProxyFile(human.meshData,
-                                   mhclofile,
-                                   type=type.capitalize())
-
-    if type == "proxymeshes":
-        human.setProxy(_proxy)
-        return
-
-    mesh = files3d.loadMesh(_proxy.obj_file, maxFaces = _proxy.max_pole)
-    if not mesh:
-        raise RuntimeError("Failed to load proxy mesh %s", _proxy.obj_file)
-
-    mesh.material = _proxy.material
-    mesh.priority = _proxy.z_depth           # Set render order
-
-    obj = guicommon.Object(mesh, human.getPosition())
-    obj.setRotation(human.getRotation())
-
-    #self.adaptProxyToHuman(_proxy, obj)
-    #obj.setSubdivided(human.isSubdivided()) # Copy subdivided state of human
-
-
-    if type == "hair":
-        human.hairProxy = _proxy
-        human.hairObj = obj
-
 

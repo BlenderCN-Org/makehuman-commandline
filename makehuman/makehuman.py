@@ -318,46 +318,48 @@ def debug_dump():
         import log
         log.error("Could not create debug dump", exc_info=True)
 
+ADVANCED_ARGS = True
 def parse_arguments():
     if len(sys.argv) < 2:
         return dict()
 
     import argparse    # requires python >= 2.7
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="MakeHuman, an open source tool for making 3D characters", epilog="MakeHuman - http://www.makehuman.org")
+
+    # Input argument (optional positional argument)
+    parser.add_argument("mhmFile", default=None, nargs='?', help="Load human from .mhm file (optional)")
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
-    parser.add_argument("--noshaders", action="store_true", help="disable shaders")
-    parser.add_argument("--nomultisampling", action="store_true", help="disable multisampling (used for anti-aliasing and alpha-to-coverage transparency rendering)")
-    parser.add_argument("--debugopengl", action="store_true", help="enable OpenGL error checking and logging (slow)")
-    parser.add_argument("--fullloggingopengl", action="store_true", help="log all OpenGL calls (very slow)")
-    parser.add_argument("--debugnumpy", action="store_true", help="enable numpy runtime error messages")
+
+    if ADVANCED_ARGS:
+        # Output options
+        outputGroup = parser.add_argument_group('Output options', description="Result in no-GUI mode operation")
+        outputGroup.add_argument("-o", "--output", default=None, help="File to export to, extension determines format. If set, no GUI is started.")
+
+    # Debug options
+    debugGroup = parser.add_argument_group('Debug options', description="For testing, debugging and problem solving")
+    debugGroup.add_argument("--noshaders", action="store_true", help="disable shaders")
+    debugGroup.add_argument("--nomultisampling", action="store_true", help="disable multisampling (used for anti-aliasing and alpha-to-coverage transparency rendering)")
+    debugGroup.add_argument("--debugopengl", action="store_true", help="enable OpenGL error checking and logging (slow)")
+    debugGroup.add_argument("--fullloggingopengl", action="store_true", help="log all OpenGL calls (very slow)")
+    debugGroup.add_argument("--debugnumpy", action="store_true", help="enable numpy runtime error messages")
     if not isRelease():
-        parser.add_argument("-t", "--runtests", action="store_true", help="run test suite (for developers)")
+        debugGroup.add_argument("-t", "--runtests", action="store_true", help="run test suite (for developers)")
 
-    # optional positional arguments
-    parser.add_argument("mhmFile", default=None, nargs='?', help=".mhm file to load (optional)")
-
-
-    parser.add_argument("-o", "--output", default=None, nargs='?', help="File to export to. If set, no GUI is started.")
-
-    parser.add_argument("--age", default=25, type=float, help="Human age, in years")
-    parser.add_argument("--gender", default=0.5, type=float, help="Human gender (0.0: female, 1.0: male)")
-    parser.add_argument("--male", action="store_true", help="Produces a male character (overrides the gender argument)")
-    parser.add_argument("--female", action="store_true", help="Produces a female character (overrides the gender argument)")
-    parser.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
-    parser.add_argument("--rig", default=None, help="Setup a rig. One of [basic, game, muscles, humanik, xonotic, second_life, second_life_bones] (default: none)")
-    parser.add_argument("--lowres", action="store_true", help="Adds a lowresolution proxy (typically for games)")
-    parser.add_argument("--hairs", default=None, help="Polygonal hair model (see MakeHuman hairs for a list, defaults to mhair01/mhair01)")
+    if ADVANCED_ARGS:
+        import humanargparser
+        humanargparser.addModelingArguments(parser)
 
     argOptions = vars(parser.parse_args())
-    if argOptions["male"]:
-        argOptions["gender"] = 0.9
-    elif argOptions["female"]:
-        argOptions["gender"] = 0.1
+
+    if ADVANCED_ARGS:
+        humanargparser.validate(argOptions)
+
     return argOptions
 
 def main():
+    print "MakeHuman v%s" % getVersionDigitsStr()
     try:
         set_sys_path()
         make_user_dir()

@@ -11,7 +11,8 @@ numpy           BSD (3-clause)      numpy-license.txt    http://www.numpy.org
 pyOpenGL        BSD (3-clause)      pyOpenGL-license.txt http://pyopengl.sourceforge.net
 transformations BSD (3-clause)      transformations.txt  http://www.lfd.uci.edu/~gohlke/
 
+
 Optional:
 
 hglib           MIT                 hglib-license.txt    http://mercurial.selenic.com/wiki/PythonHglib
-
+PIL             PIL License         PIL-license.txt      http://www.pythonware.com/products/pil/
