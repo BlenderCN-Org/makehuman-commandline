@@ -11,7 +11,7 @@ Image class definition
 
 **Code Home Page:**    https://bitbucket.org/MakeHuman/makehuman/
 
-**Authors:**           Glynn Clements
+**Authors:**           Glynn Clements, Jonas Hauquier
 
 **Copyright(c):**      MakeHuman Team 2001-2014
 
