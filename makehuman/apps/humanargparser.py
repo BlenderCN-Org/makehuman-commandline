@@ -148,6 +148,7 @@ def validate(argOptions):
 def applyModelingArguments(human, argOptions):
     """
     Apply the commandline argument options parsed by argparse to the human.
+    Does nothing if no advanced commandline args were specified.
     """
     # Macro properties
     if argOptions.get("age", None):
@@ -191,12 +192,25 @@ def applyModelingArguments(human, argOptions):
 
     ### Material
     # TODO
-    
+
+
+    # TODO perhaps allow disabling this option (default to off?)
     # Set a suiting default material based on predominant gender and ethnic properties
     if not argOptions.get('material', None) and human.getDominantGender() and human.getEthnicity():
-        human.material = material.fromFile('data/skins/young_%(race)s_%(gender)s/young_%(race)s_%(gender)s.mhmat' % {
+        matFile = 'data/skins/young_%(race)s_%(gender)s/young_%(race)s_%(gender)s.mhmat' % {
             "race": human.getEthnicity(), 
-            "gender": human.getDominantGender() } )
+            "gender": human.getDominantGender() }
+        if not os.path.isfile(matFile):
+            matFile = getpath.findFile(matFile, 
+                                       searchPaths = [getpath.getDataPath(), 
+                                                      getpath.getSysDataPath(),
+                                                      getpath.getPath(),
+                                                      getpath.getSysPath()])
+        if not os.path.isfile(matFile):
+            log.error('Auto-apply Material file "%s" does not exist.', matFile)
+        else:
+            import material
+            human.material = material.fromFile( matFile )
 
 
 def addProxy(human, mhclofile, type):
