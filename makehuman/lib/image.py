@@ -47,6 +47,10 @@ be imported (import happens only when needed).
 
 import numpy as np
 import time
+import log
+
+
+skip_dependency_nag = False
 
 class Image(object):
     """Container for handling images.
@@ -83,7 +87,22 @@ class Image(object):
         which are equivalent to W (Grayscale), WA (Grayscale with Alpha),
         RGB, and RGBA respectively.
         """
-        import image_qt as image_lib
+        import sys
+        if "PyQt4" in sys.modules.keys():
+            # If Qt libraries are already loaded, use the Qt back-end (default) 
+            import image_qt as image_lib
+        else:
+            global skip_dependency_nag
+            try:
+                import image_pil as image_lib
+                if not skip_dependency_nag:
+                    log.debug("Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
+                    skip_dependency_nag = True
+            except:
+                if not skip_dependency_nag:
+                    log.debug("PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
+                    skip_dependency_nag = True
+                import image_qt as image_lib
 
         if path is not None:
             self._is_empty = False
@@ -156,7 +175,23 @@ class Image(object):
 
     def save(self, path):
         """Save the Image to a file."""
-        import image_qt as image_lib
+        import sys
+        if "PyQt4" in sys.modules.keys():
+            # If Qt libraries are already loaded, use the Qt back-end (default) 
+            import image_qt as image_lib
+        else:
+            global skip_dependency_nag
+
+            try:
+                import image_pil as image_lib
+                if not skip_dependency_nag:
+                    log.debug("Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
+                    skip_dependency_nag = True
+            except:
+                if not skip_dependency_nag:
+                    log.debug("PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
+                    skip_dependency_nag = True
+                import image_qt as image_lib
 
         image_lib.save(path, self._data)
 
