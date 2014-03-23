@@ -322,15 +322,6 @@ def parse_arguments():
     if len(sys.argv) < 2:
         return dict()
 
-    while 'endcommand' in sys.argv:
-        sys.argv.remove('endcommand')
-
-    # Hack around the limitations of argparse:
-    # endcommand is needed because argparse does not allow optional subcommands
-    # --ignoreMe is Needed in case --clothes is the final arg, (which consumes 
-    # all strings until something with -- is found, so it does not consume the
-    # subcommand 'endcommand').
-    #sys.argv.extend(['--ignoreMe', 'nothing', 'endcommand'])
     print sys.argv
 
     import argparse    # requires python >= 2.7
@@ -343,7 +334,6 @@ def parse_arguments():
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
-    parser.add_argument("--ignoreMe", default=None, metavar="ignoreThis", help=argparse.SUPPRESS)
 
     # headless options
     headlessGroup = parser.add_argument_group('Headless options', description="Result in no-GUI mode operation")
@@ -368,64 +358,16 @@ def parse_arguments():
     macroGroup.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
     macroGroup.add_argument("--rig", default=None, help="Setup a rig. One of [basic, game, muscles, humanik, xonotic, second_life, second_life_bones] (default: none)") # TODO dynamically list
 
-    subparsers = parser.add_subparsers(title="Subcommands",metavar='<command>', help="Use '<command> --help' for more info")
+    # Modifier paremters
+    modGroup = parser.add_argument_group('Modifiers loading')
+    modGroup.add_argument("--listmodifiers", action="store_true", help="List all modifier names")
+    modGroup.add_argument("-m","--modifier", nargs=2, metavar=("modifierName","value"), action="append", help="Specify a modifier and its value to apply to the human, in '<modifierName>:<value>' format")
 
-    def _createModifierSubcommand(subparsers_parent):
-        modifierParser = subparsers_parent.add_parser("modifier", help="Specify modeling modifiers to apply to the human")
-        #modifierParser.set_defaults(which="modifier")
-        modifierParser.add_argument("modifierName", nargs=1, action="append", help="Name of the modifier")
-        modifierParser.add_argument("modifierValue", nargs=1, action="append", type=float, help="Value to set the modifier")
-
-        # Needed to be able to reliable close proxy subcommand
-        modifierParser.add_argument("--ignoreMe", default=None, metavar="ignoreThis", help=argparse.SUPPRESS)
-        return modifierParser
-
-    def _createProxySubcommand(subparsers_parent):
-        proxymeshParser = subparsers_parent.add_parser("proxy", help="Specify proxy meshes to attach")
-        import proxy
-        for pType in proxy.ProxyTypes:
-            if pType == "Proxymeshes":  # TODO make this the default
-                desc = "Attach a proxy with an alternative body topology (Only one)"
-                multi = False
-            else:
-                desc = "Attach %s proxy" % pType.lower()
-                multi = not(pType in proxy.SimpleProxyTypes)
-                desc = desc + " (%s)" % ("Only one" if multi else "Multiple allowed")
-            if multi:
-                proxymeshParser.add_argument("--"+pType.lower(), action="append", nargs='+', default=None, metavar="proxyFile", help=desc)
-            else:
-                proxymeshParser.add_argument("--"+pType.lower(), default=None, metavar="proxyFile", help=desc)
-        # Needed to be able to reliable close proxy subcommand
-        proxymeshParser.add_argument("--ignoreMe", default=None, metavar="ignoreThis", help=argparse.SUPPRESS)
-        #choices = [ pType.lower() for pType in proxy.ProxyTypes ]
-        #proxymeshParser.add_argument("type", nargs='?', help="Type of the proxy to add, available options: {%s}" % " ".join(choices))
-        #proxymeshParser.add_argument("proxyfile", nargs='?', help="The file path of the proxy to load")
-        return proxymeshParser
-
-    def _createEndSubcommand(subparsers_parent):
-        return subparsers_parent.add_parser("endcommand", help="")
-
-    def _endConnector(endNode):
-        subparsers_parent = endNode.add_subparsers(help=argparse.SUPPRESS)
-        _createEndSubcommand(subparsers_parent)
-
-    modifierParser = _createModifierSubcommand(subparsers)
-    proxymeshParser = _createProxySubcommand(subparsers)
-    _createEndSubcommand(subparsers)
-
-
-    ## Add subparsers as subcommands to each other, allowing chaining of multiple subcommands
-    sub_subparsers = modifierParser.add_subparsers(help=argparse.SUPPRESS)
-    _createModifierSubcommand(sub_subparsers)
-    _createProxySubcommand(sub_subparsers)
-    _createEndSubcommand(sub_subparsers)
-
-    sub_subparsers = proxymeshParser.add_subparsers(help=argparse.SUPPRESS)
-    _createModifierSubcommand(sub_subparsers)
-    #_createProxySubcommand(sub_subparsers)
-    _createEndSubcommand(sub_subparsers)
-
-
+    # Proxies
+    proxyGroup = parser.add_argument_group('Proxy mesh specification')
+    proxyGroup.add_argument("--listproxytypes", action="store_true", help="List the available proxy type names")
+    modGroup.add_argument("--listproxies", metavar="proxyType", help="List all proxy files of specified proxy type")
+    proxyGroup.add_argument("-p","--proxy", nargs=2, metavar=("proxyType","proxyFile"), action="append", help="Load a proxy of a specific type")
 
 
     # Perform some validation on the input
