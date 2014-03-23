@@ -96,11 +96,11 @@ class Image(object):
             try:
                 import image_pil as image_lib
                 if not skip_dependency_nag:
-                    log.debug("Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
+                    log.debug("Image: Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
                     skip_dependency_nag = True
             except:
                 if not skip_dependency_nag:
-                    log.debug("PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
+                    log.debug("Image: PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
                     skip_dependency_nag = True
                 import image_qt as image_lib
 
@@ -185,11 +185,11 @@ class Image(object):
             try:
                 import image_pil as image_lib
                 if not skip_dependency_nag:
-                    log.debug("Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
+                    log.debug("Image: Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
                     skip_dependency_nag = True
             except:
                 if not skip_dependency_nag:
-                    log.debug("PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
+                    log.debug("Image: PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
                     skip_dependency_nag = True
                 import image_qt as image_lib
 
