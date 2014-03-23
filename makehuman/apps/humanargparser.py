@@ -55,11 +55,11 @@ def addModelingArguments(argparser):
     # TODO add range validation on numeric values
     # Macro properties
     macroGroup = argparser.add_argument_group('Macro properties', description="Optional macro properties to set on human")
-    macroGroup.add_argument("--age", default=25, type=float, help="Human age, in years")
-    macroGroup.add_argument("--gender", default=0.5, type=float, help="Human gender (0.0: female, 1.0: male)")
+    macroGroup.add_argument("--age", default=None, type=float, help="Human age, in years")
+    macroGroup.add_argument("--gender", default=None, type=float, help="Human gender (0.0: female, 1.0: male)")
     macroGroup.add_argument("--male", action="store_true", help="Produces a male character (overrides the gender argument)")
     macroGroup.add_argument("--female", action="store_true", help="Produces a female character (overrides the gender argument)")
-    macroGroup.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
+    macroGroup.add_argument("--race", default=None, help="One of [caucasian, asian, african]")
 
     # Modifier parameters
     modGroup = argparser.add_argument_group('Modifiers loading')
@@ -97,7 +97,7 @@ def validate(argOptions):
 
     if argOptions.get('listmodifiers', False):
         import humanmodifier
-        modifiers = humanmodifier.loadModifiers(getpath.getSysDataPath('modifiers/modeling_modifiers.json'), human=None)
+        modifiers = _loadModifiers(human=None)
         print "Available modifier names:"
         print "\n".join(['  %s\t%s' % (m.fullName, m.description) for m in modifiers])
         sys.exit()
@@ -150,20 +150,43 @@ def applyModelingArguments(human, argOptions):
     Apply the commandline argument options parsed by argparse to the human.
     Does nothing if no advanced commandline args were specified.
     """
-    # Macro properties
+    ### Macro properties
     if argOptions.get("age", None):
+        _selectivelyLoadModifiers(human)
         human.setAgeYears(argOptions["age"])
     if argOptions.get("gender", None):
+        _selectivelyLoadModifiers(human)
         human.setGender(argOptions["gender"])
-    if argOptions.get("race", None):
+    if argOptions.get("race", None) is not None:
         if argOptions["race"] == "caucasian":
+            _selectivelyLoadModifiers(human)
             human.setCaucasian(0.9)
         elif argOptions["race"] == "african":
+            _selectivelyLoadModifiers(human)
             human.setAfrican(0.9)
         elif argOptions["race"] == "asian":
+            _selectivelyLoadModifiers(human)
             human.setAsian(0.9)
         else:
             raise RuntimeError('Unknown race "%s" specified on commandline. Must be one of [caucasian, african, asian]' % argOptions["race"])
+
+    ### Modifiers (can override some macro parameters set above)
+    if argOptions.get("modifier", None) is not None:
+        modifiersChanged = False
+        alreadyLoaded = human.modifierNames
+        for mName, value in argOptions["modifier"]:
+            if mName not in alreadyLoaded:
+                # Attempt to load missing modifiers without loading doubles
+                _selectivelyLoadModifiers(human)
+                alreadyLoaded = human.modifierNames
+            try:
+                human.getModifier(mName).setValue(value)
+                modifiersChanged = True
+            except:
+                raise RuntimeError('No modifier named "%s" as specified by --modifier command. See --listmodifiers for list of acceptable options.' % mName)
+        # Update human
+        if modifiersChanged:
+            human.applyAllTargets()
 
     ### Skeleton
     if argOptions.get("rig", None):
@@ -306,3 +329,29 @@ def addRig(human, rigfile):
     def skeleton_getter():
         return human._skeleton
     human.getSkeleton = skeleton_getter
+
+
+def _loadModifiers(human):
+    """
+    Load modifiers from file. Set human to None to not assign them to a human.
+    """
+    import humanmodifier
+    modifiers = humanmodifier.loadModifiers(getpath.getSysDataPath('modifiers/modeling_modifiers.json'), human)
+    return modifiers
+
+mods_loaded = False
+def _selectivelyLoadModifiers(human):
+    """
+    Load modifiers if they're not already loaded.
+    Only add missing ones.
+    """
+    global mods_loaded
+    if mods_loaded:
+        return
+    modifiers = _loadModifiers(human=None)
+    alreadyLoaded = human.modifierNames
+    for m in modifiers:
+        if m.fullName not in alreadyLoaded:
+            m.setHuman(human)
+    mods_loaded = True
+

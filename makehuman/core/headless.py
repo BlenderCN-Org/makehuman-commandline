@@ -67,18 +67,6 @@ def run(args):
     G.app = ConsoleApp()
     human = G.app.selectedHuman
 
-    modifiers = [("macrodetails", "Age"),
-                 ("macrodetails", "Gender"),
-                 ("macrodetails", "Caucasian"),
-                 ("macrodetails", "African"),
-                 ("macrodetails", "Asian")]
-
-    # TODO properly construct modifiers if not inited by plugin
-    for cat, var in modifiers:
-        if '%s/%s' % (cat, var) not in human.modifierNames:
-            modifier = humanmodifier.MacroModifier(cat, var)
-            modifier.setHuman(human)
-
     import humanargparser
     humanargparser.applyModelingArguments(human, args)
 
