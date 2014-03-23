@@ -323,7 +323,7 @@ def parse_arguments():
         return dict()
 
     import argparse    # requires python >= 2.7
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="MakeHuman, an open source tool for making 3D characters", epilog="MakeHuman - http://www.makehuman.org")
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
@@ -335,26 +335,96 @@ def parse_arguments():
     if not isRelease():
         parser.add_argument("-t", "--runtests", action="store_true", help="run test suite (for developers)")
 
+    # headless options
+    headlessGroup = parser.add_argument_group('Headless options', description="Result in no-GUI mode operation")
+    headlessGroup.add_argument("-o", "--output", default=None, nargs='?', help="File to export to, extension determines format. If set, no GUI is started.")
+
+    # Macro properties
+    macroGroup = parser.add_argument_group('Macro properties', description="Optional macro properties to set on human")
+    macroGroup.add_argument("--age", default=25, type=float, help="Human age, in years")
+    macroGroup.add_argument("--gender", default=0.5, type=float, help="Human gender (0.0: female, 1.0: male)")
+    macroGroup.add_argument("--male", action="store_true", help="Produces a male character (overrides the gender argument)")
+    macroGroup.add_argument("--female", action="store_true", help="Produces a female character (overrides the gender argument)")
+    macroGroup.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
+    macroGroup.add_argument("--rig", default=None, help="Setup a rig. One of [basic, game, muscles, humanik, xonotic, second_life, second_life_bones] (default: none)") # TODO dynamically list
+
+    subparsers = parser.add_subparsers(metavar='advanced',help="Advanced subcommands help")
+    modifierParser = subparsers.add_parser("modifier", help="Specify modeling modifiers to apply to the human")
+    #modifierParser.set_defaults(which="modifier")
+    modifierParser.add_argument("modifierName", action="append", help="Name of the modifier")
+    modifierParser.add_argument("modifierValue", action="append", type=float, help="Value to set the modifier")
+
+    proxymeshParser = subparsers.add_parser("proxy", help="Specify proxy meshes to attach")
+    import proxy
+    for pType in proxy.ProxyTypes:
+        if pType == "Proxymeshes":  # TODO make this the default
+            desc = "Attach a proxy with an alternative body topology (Only one)"
+            multi = False
+        else:
+            desc = "Attach %s proxy" % pType.lower()
+            multi = not(pType in proxy.SimpleProxyTypes)
+            desc = desc + " (%s)" % ("Only one" if multi else "Multiple allowed")
+        if multi:
+            proxymeshParser.add_argument("--"+pType.lower(), action="append", nargs='+', default=None, metavar="proxyFile", help=desc)
+        else:
+            proxymeshParser.add_argument("--"+pType.lower(), default=None, metavar="proxyFile", help=desc)
+    #choices = [ pType.lower() for pType in proxy.ProxyTypes ]
+    #proxymeshParser.add_argument("type", nargs='?', help="Type of the proxy to add, available options: {%s}" % " ".join(choices))
+    #proxymeshParser.add_argument("proxyfile", nargs='?', help="The file path of the proxy to load")
+
     # optional positional arguments
     parser.add_argument("mhmFile", default=None, nargs='?', help=".mhm file to load (optional)")
 
 
-    parser.add_argument("-o", "--output", default=None, nargs='?', help="File to export to. If set, no GUI is started.")
+    ## Add subparsers as subcommands to each other, allowing chaining multiple subcommands
+    sub_ps = modifierParser.add_subparsers(help=argparse.SUPPRESS)
+    sub_proxy = sub_ps.add_parser("proxy", help="Specify proxy meshes to attach")
+    for pType in proxy.ProxyTypes:
+        if pType == "Proxymeshes":
+            desc = "Attach a proxy with an alternative body topology (Only one)"
+            multi = False
+        else:
+            desc = "Attach %s proxy" % pType.lower()
+            multi = not(pType in proxy.SimpleProxyTypes)
+            desc = desc + " (%s)" % ("Only one" if multi else "Multiple allowed")
+        if multi:
+            sub_proxy.add_argument("--"+pType.lower(), action="append", nargs='+', default=None, metavar="proxyFile", help=desc)
+        else:
+            sub_proxy.add_argument("--"+pType.lower(), default=None, metavar="proxyFile", help=desc)
 
-    parser.add_argument("--age", default=25, type=float, help="Human age, in years")
-    parser.add_argument("--gender", default=0.5, type=float, help="Human gender (0.0: female, 1.0: male)")
-    parser.add_argument("--male", action="store_true", help="Produces a male character (overrides the gender argument)")
-    parser.add_argument("--female", action="store_true", help="Produces a female character (overrides the gender argument)")
-    parser.add_argument("--race", default="caucasian", help="One of [caucasian, asian, african] (default: caucasian)")
-    parser.add_argument("--rig", default=None, help="Setup a rig. One of [basic, game, muscles, humanik, xonotic, second_life, second_life_bones] (default: none)")
-    parser.add_argument("--lowres", action="store_true", help="Adds a lowresolution proxy (typically for games)")
-    parser.add_argument("--hairs", default=None, help="Polygonal hair model (see MakeHuman hairs for a list, defaults to mhair01/mhair01)")
+    sub_mod = sub_ps.add_parser("modifier", help="Specify proxy meshes to attach")
+    sub_mod.add_argument("modifierName", action="append", help="Name of the modifier")
+    sub_mod.add_argument("modifierValue", action="append", type=float, help="Value to set the modifier")
+
+
+
+    sub_ps = proxymeshParser.add_subparsers(help=argparse.SUPPRESS)
+    sub_proxy = sub_ps.add_parser("proxy", help="Specify proxy meshes to attach")
+    for pType in proxy.ProxyTypes:
+        if pType == "Proxymeshes":
+            desc = "Attach a proxy with an alternative body topology (Only one)"
+            multi = False
+        else:
+            desc = "Attach %s proxy" % pType.lower()
+            multi = not(pType in proxy.SimpleProxyTypes)
+            desc = desc + " (%s)" % ("Only one" if multi else "Multiple allowed")
+        if multi:
+            sub_proxy.add_argument("--"+pType.lower(), action="append", nargs='+', default=None, metavar="proxyFile", help=desc)
+        else:
+            sub_proxy.add_argument("--"+pType.lower(), default=None, metavar="proxyFile", help=desc)
+
+    sub_mod = sub_ps.add_parser("modifier", help="Specify proxy meshes to attach")
+    sub_mod.add_argument("modifierName", action="append", help="Name of the modifier")
+    sub_mod.add_argument("modifierValue", action="append", type=float, help="Value to set the modifier")
 
     argOptions = vars(parser.parse_args())
     if argOptions["male"]:
         argOptions["gender"] = 0.9
     elif argOptions["female"]:
         argOptions["gender"] = 0.1
+
+    print argOptions
+
     return argOptions
 
 def main():
