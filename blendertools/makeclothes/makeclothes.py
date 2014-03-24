@@ -555,12 +555,27 @@ def writeClothes(context, hum, clo, data, matfile):
     writeClothesHeader(fp, scn)
     fp.write("name %s\n" % clo.name.replace(" ","_"))
     fp.write("obj_file %s.obj\n" % mc.goodName(clo.name))
+
     vnums = getBodyPartVerts(scn)
-    printScale(fp, hum, scn, 'x_scale', 0, vnums[0])
-    printScale(fp, hum, scn, 'z_scale', 1, vnums[1])
-    printScale(fp, hum, scn, 'y_scale', 2, vnums[2])
-    if scn.MCScaleUniform:
-        fp.write("uniform_scale %.4f\n" % scn.MCScaleCorrect)
+    hverts = hum.data.vertices
+    if scn.MCUseShearing:
+        if scn.MCUseBoundaryMirror:
+            rvnums = {}
+            for idx,pair in enumerate(vnums):
+                vn1, vn2 = pair
+                rvnums[idx] = (mirrorVert(vn1), mirrorVert(vn2))
+            vn = vnums[0][0]
+            if hverts[vn].co[0] > 0:
+                lvnums = vnums
+            else:
+                lvnums = rvnums
+                rvnums = vnums
+            writeShear(fp, "l_shear_%s %d %d %.4f %.4f\n", lvnums, hverts, False)
+            writeShear(fp, "r_shear_%s %d %d %.4f %.4f\n", rvnums, hverts, False)
+        else:
+            writeShear(fp, "shear_%s %d %d %.4f %.4f\n", vnums, hverts, False)
+    else:
+        writeShear(fp, "%s_scale %d %d %.4f\n", vnums, hverts, True)
 
     writeStuff(fp, clo, context, matfile)
 
@@ -587,6 +602,32 @@ def writeClothes(context, hum, clo, data, matfile):
     printMhcloUvLayers(fp, clo, scn, True)
     fp.close()
     print("%s done" % outfile)
+
+
+def writeShear(fp, string, vnums, hverts, useDistance):
+    yzswitch = [("x",1), ("z",-1), ("y",1)]
+    for idx in range(3):
+        cname,sign = yzswitch[idx]
+        n1,n2 = vnums[idx]
+        if n1 >=0 and n2 >= 0:
+            x1 = hverts[n1].co[idx]
+            x2 = hverts[n2].co[idx]
+            if useDistance:
+                fp.write(string % (cname, n1, n2, abs(x1-x2)))
+            else:
+                fp.write(string % (cname, n1, n2, sign*x1, sign*x2))
+
+
+def mirrorVert(vn):
+    from maketarget.symmetry_map import Left2Right, Right2Left
+    try:
+        return Left2Right[vn]
+    except KeyError:
+        pass
+    try:
+        return Right2Left[vn]
+    except KeyError:
+        return vn
 
 
 def printMhcloUvLayers(fp, clo, scn, hasObj, offset=0):
@@ -815,15 +856,6 @@ def writeColor(fp, string1, string2, color, intensity):
         "%s %.4g\n" % (string2, intensity))
 
 
-def printScale(fp, hum, scn, name, index, vnums):
-    verts = hum.data.vertices
-    n1,n2 = vnums
-    if n1 >=0 and n2 >= 0:
-        x1 = verts[n1].co[index]
-        x2 = verts[n2].co[index]
-        fp.write("%s %d %d %.4f\n" % (name, n1, n2, abs(x1-x2)/scn.MCScaleCorrect))
-    return
-
 #
 #   setupTexVerts(ob):
 #
@@ -998,9 +1030,7 @@ def makeClothes(context, doFindClothes):
     else:
         log = None
     matfile = materials.writeMaterial(clo, scn.MhClothesDir)
-    if scn.MCUseRigidFit:
-        data = fitRigidly(context, hum, clo)
-    elif doFindClothes:
+    if doFindClothes:
         data = findClothes(context, hum, clo, log)
         storeData(clo, hum, data)
     else:
@@ -1335,79 +1365,6 @@ def setZDepth(scn):
     scn.MCZDepth = 50 + int((ZDepth[scn.MCZDepthName]-50)/2.6)
     return
 
-#----------------------------------------------------------
-#
-#----------------------------------------------------------
-
-def defineBoundingBox(context):
-    hum, box = getObjectPair(context)
-    checkObjectOK(hum, context, False)
-    corners = getBoundingBox(hum, box, context)
-    hum.MCBoundingBox = box.name
-    print("Corners:")
-    for hv in corners:
-        co = hv.co
-        print("%6d: %.5f %.5f %.5f" % (hv.index, co[0], co[1], co[2]))
-
-
-def getBoundingBox(hum, box, context):
-    if len(box.data.vertices) != 8:
-        raise MHError("Box %s must have exactly eight vertices" % box.name)
-    checkObjectOK(box, context, False)
-
-    corners = []
-    offs = box.location - hum.location
-    for bv in box.data.vertices:
-        for hv in hum.data.vertices:
-            vec = bv.co - hv.co + offs
-            if vec.length < Epsilon:
-                corners.append(hv)
-                break
-    print(corners)
-    if len(corners) != 8:
-        raise MHError("Some box vertices do not match human vertices")
-
-    return corners
-
-
-def fitRigidly(context, hum, clo):
-    scn = context.scene
-    box = scn.objects[hum.MCBoundingBox]
-    corners = getBoundingBox(hum, box, context)
-    if scn.MCUseRigidSymmetry:
-        lcorners = corners
-        rcorners = mirrorCorners(corners)
-    data = []
-
-    for pv in clo.data.vertices:
-        verts = []
-        rawWts = []
-        wtsSum = 0
-        exact = False
-        if scn.MCUseRigidSymmetry:
-            if pv.co[0] < 0:
-                corners = rcorners
-            else:
-                corners = lcorners
-
-        for hv in corners:
-            vec = pv.co - hv.co
-            if len(vec) < Epsilon:
-                exact = True
-                exactVert = hv
-                break
-            w = 1/vec.length
-            rawWts.append(w)
-            wtsSum += w
-            verts.append(hv.index)
-        if exact:
-            data.append((pv, True, [(exactVert, 0)], [1.0], []))
-        else:
-            wts = []
-            for w in rawWts:
-                wts.append(w/wtsSum)
-            data.append((pv, False, verts, wts, []))
-    return data
 
 ###################################################################################
 #
@@ -1720,17 +1677,12 @@ def init():
         description = "Body Type To Load",
     default='None')
 
-    bpy.types.Scene.MCUseRigidFit = BoolProperty(
-        name="Use Rigid Fit",
-        description="Use a bounding box for rigid fitting",
+    bpy.types.Scene.MCUseShearing = BoolProperty(
+        name="Use Shearing",
+        description="Allow bounding box to be sheared",
         default=False)
 
-    bpy.types.Object.MCBoundingBox = StringProperty(
-        name="Bounding Box",
-        default="",
-        maxlen=256)
-
-    bpy.types.Scene.MCUseRigidSymmetry = BoolProperty(
+    bpy.types.Scene.MCUseBoundaryMirror = BoolProperty(
         name="Mirror Bounding Box",
         description="Mirror the bounding box for Left/Right vertex groups",
         default=False)
