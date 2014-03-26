@@ -250,23 +250,15 @@ def addProxy(human, mhclofile, type):
 
     import proxy
     _proxy = proxy.readProxyFile(human, mhclofile, type=type.capitalize())
-    mesh,obj = pxy.loadMeshAndObject(human)
 
     if type == "proxymeshes":
         human.setProxy(_proxy)
         return
 
-    import files3d
-    import guicommon
-    mesh = files3d.loadMesh(_proxy.obj_file, maxFaces = _proxy.max_pole)
+    mesh,obj = _proxy.loadMeshAndObject(human)
+
     if not mesh:
         raise RuntimeError('Failed to load proxy mesh "%s"', _proxy.obj_file)
-
-    mesh.material = _proxy.material
-    mesh.priority = _proxy.z_depth           # Set render order
-
-    obj = guicommon.Object(mesh, human.getPosition())
-    obj.setRotation(human.getRotation())
 
     def _adaptProxyToHuman(pxy, obj):
         mesh = obj.getSeedMesh()
