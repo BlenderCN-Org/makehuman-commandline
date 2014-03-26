@@ -249,9 +249,8 @@ def addProxy(human, mhclofile, type):
             raise RuntimeError('Proxy file "%s" does not exist (%s).' % (mhclofile, type))
 
     import proxy
-    _proxy = proxy.readProxyFile(human.meshData,
-                                   mhclofile,
-                                   type=type.capitalize())
+    _proxy = proxy.readProxyFile(human, mhclofile, type=type.capitalize())
+    mesh,obj = pxy.loadMeshAndObject(human)
 
     if type == "proxymeshes":
         human.setProxy(_proxy)
