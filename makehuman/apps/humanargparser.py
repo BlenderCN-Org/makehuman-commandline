@@ -79,8 +79,11 @@ def addModelingArguments(argparser):
 
     # Material properties
     matGroup = argparser.add_argument_group('Material settings')
-    matGroup.add_argument("--listmaterials", action="store_true", help="List the available materials")
-    matGroup.add_argument("--material", metavar="materialName", default=None, help="Specify a skin material to apply to the human")   # TODO not only for human
+    matGroup.add_argument("--listmaterials", action="store_true", help="List the available skin materials")
+    matGroup.add_argument("--material", metavar="materialFile", default=None, help="Specify a skin material to apply to the human")
+    # TODO
+    matGroup.add_argument("--listproxymaterials", metavar=("proxyType"), help="List the available materials for the specified proxy")
+    matGroup.add_argument("--proxymaterial", metavar=("proxyType","materialFile"), default=None, help="Specify a material to apply to the proxy")
 
     return argparser
 
@@ -144,6 +147,20 @@ def validate(argOptions):
         print "Available rigs:"
         print "\n".join(['  %s' % r for r in files])
         sys.exit()
+
+    if argOptions.get('listmaterials', False):
+        files = _listDataFiles('skins', ['.mhmat'])
+        print "Available materials:"
+        print "\n".join(['  %s' % r for r in files])
+        sys.exit()
+
+    # TODO
+    #if argOptions.get('listproxymaterials', False):
+    #    proxyFilePath = ...
+    #    files = _listDataFiles(proxyFilePath, ['.mhmat'])
+    #    print "Available materials:"
+    #    print "\n".join(['  %s' % r for r in files])
+    #    sys.exit()
 
 def applyModelingArguments(human, argOptions):
     """
@@ -213,8 +230,16 @@ def applyModelingArguments(human, argOptions):
             addProxy(human, proxyFile, proxyType)
         del appliedSimpleTypes
 
+
     ### Material
+    if argOptions.get("material", None):
+        applyMaterial(argOptions["material"], human)
+
+
+    ### Proxy material
     # TODO
+    #if argOptions.get("proxymaterial", None):
+    #    applyMaterial(argOptions["material"], proxyObj)
 
 
     # TODO perhaps allow disabling this option (default to off?)
@@ -223,20 +248,16 @@ def applyModelingArguments(human, argOptions):
         matFile = 'data/skins/young_%(race)s_%(gender)s/young_%(race)s_%(gender)s.mhmat' % {
             "race": human.getEthnicity(), 
             "gender": human.getDominantGender() }
-        if not os.path.isfile(matFile):
-            matFile = getpath.findFile(matFile, 
-                                       searchPaths = [getpath.getDataPath(), 
-                                                      getpath.getSysDataPath(),
-                                                      getpath.getPath(),
-                                                      getpath.getSysPath()])
-        if not os.path.isfile(matFile):
+
+        try:
+            applyMaterial(matFile, human)
+        except:
             log.error('Auto-apply Material file "%s" does not exist.', matFile)
-        else:
-            import material
-            human.material = material.fromFile( matFile )
 
 
 def addProxy(human, mhclofile, type):
+    # TODO if eyes proxy is loaded, the one loaded by default should be removed
+
     if not os.path.isfile(mhclofile):
         mhclofile = getpath.findFile(mhclofile, 
                                      searchPaths = [getpath.getDataPath(), 
@@ -320,6 +341,19 @@ def addRig(human, rigfile):
     def skeleton_getter():
         return human._skeleton
     human.getSkeleton = skeleton_getter
+
+def applyMaterial(matFile, obj):
+    if not os.path.isfile(matFile):
+        matFile = getpath.findFile(matFile, 
+                                   searchPaths = [getpath.getDataPath(), 
+                                                  getpath.getSysDataPath(),
+                                                  getpath.getPath(),
+                                                  getpath.getSysPath()])
+    if not os.path.isfile(matFile):
+        raise RuntimeError('Material file "%s" does not exist.', matFile)
+    else:
+        import material
+        obj.material = material.fromFile( matFile )
 
 
 def _loadModifiers(human):
