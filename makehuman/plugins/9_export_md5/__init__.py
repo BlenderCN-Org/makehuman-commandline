@@ -37,6 +37,8 @@ Abstract
 TODO
 """
 
+import mh2md5
+
 from progress import Progress
 from export import Exporter
 from exportutils.config import Config
@@ -61,12 +63,13 @@ class ExporterMD5(Exporter):
         self.name = "MD5"
         self.filter = "MD5 (*.md5)"
         self.fileExtension = "md5"
+        self.orderPriority = 10.0
 
     def build(self, options, taskview):
         self.taskview       = taskview
 
     def export(self, human, filename):
-        from . import mh2md5
+        reload(mh2md5)
         cfg = self.getConfig()
         cfg.setHuman(human)
 
