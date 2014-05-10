@@ -83,7 +83,8 @@ def exportStlAscii(filepath, config, exportJoints = False):
         config=config,
         subdivide=config.subdivide)
 
-    fp = open(filepath, 'w')
+    from codecs import open
+    fp = open(filepath, 'w', encoding="utf-8")
     solid = name.replace(' ','_')
     fp.write('solid %s\n' % solid)
 
@@ -115,10 +116,8 @@ def exportStlAscii(filepath, config, exportJoints = False):
     progress(1, None, "STL export finished. Exported file: %s", filepath)
 
 
-def exportStlBinary(human, filepath, config, exportJoints = False):
+def exportStlBinary(filepath, config, exportJoints = False):
     """
-    human:
-      *Human*.  The object whose information is to be used for the export.
     filepath:
       *string*.  The filepath of the file to export the object to.
     config:
@@ -127,7 +126,8 @@ def exportStlBinary(human, filepath, config, exportJoints = False):
 
     progress = Progress(0, None)
 
-    config.setHuman(human)
+    human = config.human
+    obj = human.meshData
     config.setupTexFolder(filepath)
     filename = os.path.basename(filepath)
     name = config.goodName(os.path.splitext(filename)[0])

@@ -113,7 +113,7 @@ class MaterialTaskView(gui3d.TaskView):
             log.warning("Cannot set material for clothes with UUID %s, no such item", uuid)
             return False
         clo = human.clothesProxies[uuid].object
-        clo.mesh.material = material.fromFile(filename)
+        clo.material = material.fromFile(filename)
         return True
 
     def getClothesMaterial(self, uuid):
@@ -209,17 +209,17 @@ class MaterialTaskView(gui3d.TaskView):
             if human.hairProxy and human.hairProxy.getUuid() == uuid:
                 proxy = human.hairProxy
                 filepath = self.getMaterialPath(filepath, proxy.file)
-                human.hairObj.material = material.fromFile(filepath)
+                proxy.object.material = material.fromFile(filepath)
                 return
             elif human.eyesProxy and human.eyesProxy.getUuid() == uuid:
                 proxy = human.eyesProxy
                 filepath = self.getMaterialPath(filepath, proxy.file)
-                human.eyesObj.material = material.fromFile(filepath)
+                proxy.object.material = material.fromFile(filepath)
                 return
             elif human.genitalsProxy and human.genitalsProxy.getUuid() == uuid:
                 proxy = human.genitalsProxy
                 filepath = self.getMaterialPath(filepath, proxy.file)
-                human.genitalsObj.material = material.fromFile(filepath)
+                proxy.object.material = material.fromFile(filepath)
                 return
             elif not uuid in human.clothesProxies.keys():
                 log.error("Could not load material for proxy with uuid %s (%s)! No such proxy." % (uuid, name))
@@ -271,19 +271,19 @@ class MaterialTaskView(gui3d.TaskView):
                 if clo.material.filename !=  proxy.material.filename:
                     materialPath = self.getRelativeMaterialPath(clo.material.filename, proxy.file)
                     file.write('material %s %s %s\n' % (proxy.name, proxy.getUuid(), materialPath))
-        if human.hairObj and human.hairProxy:
+        if human.hairProxy:
             proxy = human.hairProxy
-            hairObj = human.hairObj
+            hairObj = proxy.object
             materialPath = self.getRelativeMaterialPath(hairObj.material.filename, proxy.file)
             file.write('material %s %s %s\n' % (proxy.name, proxy.getUuid(), materialPath))
-        if human.eyesObj and human.eyesProxy:
+        if human.eyesProxy:
             proxy = human.eyesProxy
-            eyesObj = human.eyesObj
+            eyesObj = proxy.object
             materialPath = self.getRelativeMaterialPath(eyesObj.material.filename, proxy.file)
             file.write('material %s %s %s\n' % (proxy.name, proxy.getUuid(), materialPath))
-        if human.genitalsObj and human.genitalsProxy:
+        if human.genitalsProxy:
             proxy = human.genitalsProxy
-            genitalsObj = human.genitalsObj
+            genitalsObj = proxy.object
             materialPath = self.getRelativeMaterialPath(genitalsObj.material.filename, proxy.file)
             file.write('material %s %s %s\n' % (proxy.name, proxy.getUuid(), materialPath))
 

@@ -42,10 +42,27 @@ import os
 
 __home_path = None
 
+def pathToUnicode(path):
+    """
+    Unicode representation of the filename.
+    String is decoded with the codeset used by the filesystem of the operating
+    system.
+    Unicode representations of paths are fit for use in GUI.
+    If the path parameter is not a string, it will be returned unchanged.
+    """
+    if path is None:
+        return path
+    elif isinstance(path, unicode):
+        return path
+    elif isinstance(path, basestring):
+        return path.decode(sys.getfilesystemencoding())
+    else:
+        return path
+
 def formatPath(path):
     if path is None:
         return None
-    return os.path.normpath(path).replace("\\", "/")
+    return pathToUnicode( os.path.normpath(path).replace("\\", "/") )
 
 def canonicalPath(path):
     """
@@ -93,7 +110,7 @@ def getHomePath():
 
     # Unix-based
     else:
-        __home_path = os.path.expanduser('~')
+        __home_path = pathToUnicode( os.path.expanduser('~') )
         return __home_path
 
 def getPath(subPath = ""):
@@ -180,7 +197,7 @@ def isSubPath(subpath, path):
     path = canonicalPath(path)
     return commonprefix([subpath, path]) == path
 
-def getRelativePath(path, relativeTo = [getDataPath(), getSysDataPath()]):
+def getRelativePath(path, relativeTo = [getDataPath(), getSysDataPath()], strict=False):
     """
     Return a relative file path, relative to one of the specified search paths.
     First valid path is returned, so order in which search paths are given matters.
@@ -193,11 +210,14 @@ def getRelativePath(path, relativeTo = [getDataPath(), getSysDataPath()]):
         if isSubPath(path, p):
             relto = p
     if relto is None:
-        return path
+        if strict:
+            return None
+        else:
+            return path
 
     return formatPath( os.path.relpath(path, relto) )
 
-def findFile(relPath, searchPaths = [getDataPath(), getSysDataPath()]):
+def findFile(relPath, searchPaths = [getDataPath(), getSysDataPath()], strict=False):
     """
     Inverse of getRelativePath: find an absolute path from specified relative
     path in one of the search paths.
@@ -211,11 +231,17 @@ def findFile(relPath, searchPaths = [getDataPath(), getSysDataPath()]):
         if os.path.isfile(path):
             return formatPath( path )
 
-    return relPath
+    if strict:
+        return None
+    else:
+        return relPath
 
-def search(paths, extensions, recursive=True):
+def search(paths, extensions, recursive=True, mutexExtensions=False):
     """
     Search for files with specified extensions in specified paths.
+    If mutexExtensions is True, no duplicate files with only differing extension
+    will be returned. Instead, only the file with highest extension precedence 
+    (extensions occurs earlier in the extensions list) is kept.
     """
     if isinstance(paths, basestring):
         paths = [paths]
@@ -223,14 +249,27 @@ def search(paths, extensions, recursive=True):
         extensions = [extensions]
     extensions = [e[1:].lower() if e.startswith('.') else e.lower() for e in extensions]
 
+    if mutexExtensions:
+        discovered = dict()
+        def _aggregate_files_mutexExt(filepath):
+            basep, ext = os.path.splitext(filepath)
+            ext = ext[1:]
+            if basep in discovered:
+                if extensions.index(ext) < extensions.index(discovered[basep]):
+                    discovered[basep] = ext
+            else:
+                discovered[basep] = ext
+
     if recursive:
         for path in paths:
             for root, dirs, files in os.walk(path):
                 for f in files:
                     ext = os.path.splitext(f)[1][1:].lower()
                     if ext in extensions:
-                        if f.lower().endswith('.' + ext):
-                            yield os.path.join(root, f)
+                        if mutexExtensions:
+                            _aggregate_files_mutexExt(os.path.join(root, f))
+                        else:
+                            yield pathToUnicode( os.path.join(root, f) )
     else:
         for path in paths:
             if not os.path.isdir(path):
@@ -240,5 +279,36 @@ def search(paths, extensions, recursive=True):
                 if os.path.isfile(f):
                     ext = os.path.splitext(f)[1][1:].lower()
                     if ext in extensions:
-                        yield f
+                        if mutexExtensions:
+                            _aggregate_files_mutexExt(f)
+                        else:
+                            yield pathToUnicode( f )
 
+    if mutexExtensions:
+        for f in ["%s.%s" % (p,e) for p,e in discovered.items()]:
+            yield pathToUnicode( f )
+
+def getJailedPath(filepath, relativeTo, jailLimits=[getDataPath(), getSysDataPath()]):
+    """
+    Get a path to filepath, relative to relativeTo path, confined within the
+    jailLimits folders. Returns None if the path would fall outside of the jail.
+    This is a portable path which can be used for distributing eg. materials
+    (texture paths are portable).
+    Returns None if the filepath falls outside of the jail folders. Returns
+    a path to filename relative to relativeTo path if it is a subpath of it,
+    else returns a path relative to the jailLimits.
+    """
+    def _withinJail(path):
+        for j in jailLimits:
+            if isSubPath(path, j):
+                return True
+        return False
+
+    if _withinJail(filepath):
+        relPath = getRelativePath(filepath, relativeTo, strict=True)
+        if relPath:
+            return relPath
+        else:
+            return getRelativePath(filepath, jailLimits)
+    else:
+        return None

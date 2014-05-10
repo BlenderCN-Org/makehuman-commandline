@@ -98,7 +98,8 @@ class HumanFileSort(fc.FileSort):
         meta = {}
                 
         meta['modified'] = os.path.getmtime(filename)
-        f = open(filename)
+        from codecs import open
+        f = open(filename, 'rU', encoding="utf-8")
         for line in f:
             lineData = line.split()
             field = lineData[0]
@@ -117,11 +118,11 @@ class LoadTaskView(gui3d.TaskView):
         self.modelPath = None
 
         self.fileentry = self.addTopWidget(gui.FileEntryView('Browse', mode='dir'))
-        self.fileentry.setFilter('MakeHuman Models (*.mhm)')
+        self.fileentry.filter = 'MakeHuman Models (*.mhm)'
 
         @self.fileentry.mhEvent
-        def onFileSelected(dirpath):
-            self.filechooser.setPaths([dirpath])
+        def onFileSelected(event):
+            self.filechooser.setPaths([event.path])
             self.filechooser.refresh()
 
         self.filechooser = fc.IconListFileChooser(mh.getPath("models"), 'mhm', 'thumb', mh.getSysDataPath('notfound.thumb'), sort=HumanFileSort())
@@ -130,15 +131,11 @@ class LoadTaskView(gui3d.TaskView):
 
         @self.filechooser.mhEvent
         def onFileSelected(filename):
-            self.loadMHM(filename)
-
-    def loadMHM(self, filename):
-
-        gui3d.app.selectedHuman.load(filename, True, gui3d.app.progress)
-
-        del gui3d.app.undoStack[:]
-        del gui3d.app.redoStack[:]
-        gui3d.app.clearUndoRedo()
+            if gui3d.app.currentFile.modified:
+                gui3d.app.prompt("Load", "You have unsaved changes. Are you sure you want to close the current file?",
+                    "Yes", "No", lambda: gui3d.app.loadHumanMHM(filename))
+            else:
+                gui3d.app.loadHumanMHM(filename)
 
     def onShow(self, event):
         gui3d.TaskView.onShow(self, event)
@@ -147,7 +144,7 @@ class LoadTaskView(gui3d.TaskView):
         if self.modelPath is None:
             self.modelPath = mh.getPath("models")
 
-        self.fileentry.setDirectory(self.modelPath)
+        self.fileentry.directory = self.modelPath
         self.filechooser.setPaths(self.modelPath)
         self.filechooser.setFocus()
 

@@ -42,8 +42,8 @@ is being edited inside MakeHuman.
 """
 
 import os
-import log
 import events3d
+from getpath import pathToUnicode
 
 
 class FileModifiedEvent(events3d.Event):
@@ -116,6 +116,27 @@ class FileModifiedEvent(events3d.Event):
         """
         return "newpath" in self.reasons
 
+    @classmethod
+    def fromObjectAssignment(cls, newfileobj, oldfileobj):
+        """Class method that returns a new FileModifiedEvent object
+        properly modified to inform about a modification event,
+        in the case that the change was done with the use of
+        assignment (instead of the standard object's methods
+        e.g. load() etc.).
+        """
+        newvalue = newfileobj.modified if newfileobj else False
+        oldvalue = oldfileobj.modified if oldfileobj else False
+        event = cls(newfileobj, newvalue, oldvalue, "assignment")
+
+        if newfileobj is None:
+            event.addReason("delete")
+            return event
+
+        event.addReason("load")
+        if oldfileobj is None or newfileobj.path != oldfileobj.path:
+            event.addReason("newpath")
+        return event
+
 
 class File(events3d.EventHandler):
     """Object class representing a file that is being opened and edited
@@ -123,12 +144,9 @@ class File(events3d.EventHandler):
 
     It can be used for managing project files, and handling the currently
     opened files in a Graphical User Interface using an organized structure.
-
-    This class is intented to be inherited from, so that specific file types
-    implement their own save and load methods.
     """
 
-    def __init__(self, path=None):
+    def __init__(self):
         """File object constructor.
 
         The managed File class has a path member,
@@ -145,8 +163,6 @@ class File(events3d.EventHandler):
 
         self._path = None
         self._modified = False
-
-        self.load(path)
 
     def getModified(self):
         """Get the state of the modified flag."""
@@ -179,9 +195,9 @@ class File(events3d.EventHandler):
         event = FileModifiedEvent(self, False, self._modified, reason, data)
         self._modified = False
         event.addReason(extrareason)
-        if path != self.path:
+        if pathToUnicode(path) != self.path:
             event.addReason("newpath")
-            self._path = path
+            self._path = pathToUnicode(path)
         self.callEvent('onModified', event)
 
     def saved(self, path, reason=None, data=None):
@@ -202,78 +218,22 @@ class File(events3d.EventHandler):
         return self._path
 
     @property
-    def filename(self):
+    def name(self):
         """Get the filename of the associated file."""
-        if self.path is not None:
-            return os.path.basename(self.path)
-        else:
-            return None
+        return os.path.basename(self.path) if self.path else None
 
     @property
-    def fileextension(self):
+    def extension(self):
         """Get the extension of the associated file."""
-        if self.path is not None:
-            return os.path.splitext(self.path)[1]
-        else:
-            return None
+        return os.path.splitext(self.path)[1] if self.path else None
 
     @property
-    def filetitle(self):
+    def title(self):
         """Get the title of the associated file,
         which is the filename without the extension."""
-        if self.path is not None:
-            return os.path.splitext(self.filename)[0]
-        else:
-            return None
+        return os.path.splitext(self.name)[0] if self.name else None
 
     @property
     def dir(self):
         """Get the directory of the associated file."""
-        if self.path is not None:
-            return os.path.dirname(self.path)
-        else:
-            return None
-
-    def save(self, path):
-        """Method that the user will call to save the File to disk.
-
-        The method is intented to be overwritten by the implementation,
-        and shall call the saved() method upon success.
-        """
-
-        self.saved(path)
-        return True
-
-    def load(self, path):
-        """Method that the user will call to load the File from disk.
-
-        The method is intented to be overwritten by the implementation,
-        and shall call the loaded() method upon success.
-
-        Implementations should process load(None) as a call to close().
-        """
-
-        if path is None:
-            return self.close()
-
-        self.loaded(path)
-        return True
-
-    def close(self):
-        """Method that the user will call to close the File.
-        It presets the File object to its initial state.
-
-        The method is intented to be overwritten by the implementation,
-        and shall call the closed() method upon success.
-        """
-
-        self.closed()
-        return True
-
-    def reload(self):
-        """Reload the currently associated file.
-
-        Useful when the associated file is modified externally.
-        """
-
-        return self.load(self.path)
+        return os.path.dirname(self.path) if self.path else None

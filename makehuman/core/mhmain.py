@@ -54,17 +54,17 @@ import human
 import guifiles
 import managed_file
 import algos3d
-#import posemode
 import gui
 import language
 import log
 
 @contextlib.contextmanager
 def outFile(path):
+    from codecs import open
     path = mh.getPath(path)
     tmppath = path + '.tmp'
     try:
-        with open(tmppath, 'w') as f:
+        with open(tmppath, 'w', encoding="utf-8") as f:
             yield f
         if os.path.exists(path):
             os.remove(path)
@@ -76,12 +76,13 @@ def outFile(path):
 
 @contextlib.contextmanager
 def inFile(path):
+    from codecs import open
     try:
         path = mh.getPath(path)
         if not os.path.isfile(path):
             yield []
             return
-        with open(path, 'r') as f:
+        with open(path, 'rU', encoding="utf-8") as f:
             yield f
     except:
         log.error('Failed to load file %s', path, exc_info=True)
@@ -198,6 +199,7 @@ class MHApplication(gui3d.Application, mh.Application):
         if mh.isRelease():
             self.settings = {
                 'realtimeUpdates': True,
+                'realtimeFitting': True,
                 'sliderImages': True,
                 'excludePlugins': [
                     "0_modeling_5_editing",
@@ -233,6 +235,7 @@ class MHApplication(gui3d.Application, mh.Application):
         else:
             self.settings = {
                 'realtimeUpdates': True,
+                'realtimeFitting': True,
                 'realtimeNormalUpdates': True,
                 'cameraAutoZoom': False,
                 'lowspeed': 1,
@@ -309,8 +312,15 @@ class MHApplication(gui3d.Application, mh.Application):
     def args(self):
         return G.args
 
-    def loadHuman(self):
+    def loadHumanMHM(self, filename):
+        self.selectedHuman.load(filename, True, self.progress)
+        self.clearUndoRedo()
+        # Reset mesh is never forced to wireframe
+        self.actions.wireframe.setChecked(False)
 
+    # TO THINK: Maybe move guiload's saveMHM here as saveHumanMHM?
+
+    def loadHuman(self):
         self.progress(0.1)
 
         # Set a lower than default MAX_FACES value because we know the human has a good topology (will make it a little faster)
@@ -394,6 +404,12 @@ class MHApplication(gui3d.Application, mh.Application):
             if event.change == 'smooth':
                 # Update smooth action state (without triggering it)
                 self.actions.smooth.setChecked(self.selectedHuman.isSubdivided())
+            elif event.change == 'load':
+                self.currentFile.loaded(event.path)
+            elif event.change == 'save':
+                self.currentFile.saved(event.path)
+            elif event.change == 'reset':
+                self.currentFile.closed()
             for category in self.categories.itervalues():
                 for task in category.tasks:
                     task.callEvent('onHumanChanged', event)
@@ -565,8 +581,9 @@ class MHApplication(gui3d.Application, mh.Application):
         backGridMesh.minSubgridZoom = (1.0/spacing) * float(subgrids)/5
         self.backplaneGrid = gui3d.Object(backGridMesh)
         self.backplaneGrid.excludeFromProduction = True
+        self.backplaneGrid.placeAtFeet = True
+        self.backplaneGrid.setShadeless(1)
         #self.backplaneGrid.setPosition([0,offset,0])
-        backGridMesh.placeAtFeet = True
         self.addObject(self.backplaneGrid)
 
         # Ground grid
@@ -579,8 +596,9 @@ class MHApplication(gui3d.Application, mh.Application):
         groundGridMesh.minSubgridZoom = (1.0/spacing) * float(subgrids)/5
         self.groundplaneGrid = gui3d.Object(groundGridMesh)
         self.groundplaneGrid.excludeFromProduction = True
+        self.groundplaneGrid.placeAtFeet = True
+        self.groundplaneGrid.setShadeless(1)
         #self.groundplaneGrid.setPosition([0,offset,0])
-        groundGridMesh.placeAtFeet = True
         groundGridMesh.restrictVisibleAboveGround = True
         self.addObject(self.groundplaneGrid)
 
@@ -596,10 +614,8 @@ class MHApplication(gui3d.Application, mh.Application):
             algos3d.getTarget(self.selectedHuman.meshData, target.path)
 
     def loadFinish(self):
-
+        #self.selectedHuman.callEvent('onChanged', events3d.HumanEvent(self.selectedHuman, 'reset'))
         self.selectedHuman.applyAllTargets(gui3d.app.progress)
-        self.selectedHuman.callEvent('onChanged', events3d.HumanEvent(self.selectedHuman, 'reset'))
-        self.selectedHuman.applyAllTargets(self.progress)
 
         self.prompt('Warning', 'MakeHuman is a character creation suite. It is designed for making anatomically correct humans.\nParts of this program may contain nudity.\nDo you want to proceed?', 'Yes', 'No', None, self.stop, 'nudityWarning')
         # self.splash.hide()
@@ -619,10 +635,9 @@ class MHApplication(gui3d.Application, mh.Application):
     def startupSequence(self):
         self._processCommandlineArgs(beforeLoaded = True)
 
-        mainwinSize = (self.mainwin.width(), self.mainwin.height())
-        mainwinPos = (self.mainwin.pos().x(), self.mainwin.pos().y())
-        mainwinFrame = (self.mainwin.frameGeometry().width(), self.mainwin.frameGeometry().height())
-        mainwinBorder = (mainwinFrame[0] - mainwinSize[0], mainwinFrame[1] - mainwinSize[1])
+        mainwinGeometry = self.mainwin.storeGeometry()
+        mainwinBorder = (self.mainwin.frameGeometry().width() - self.mainwin.width(),
+             self.mainwin.frameGeometry().height() - self.mainwin.height())
 
         # Move main window completely behind splash screen
         self.mainwin.resize(self.splash.width() - mainwinBorder[0], self.splash.height() - mainwinBorder[1])
@@ -672,16 +687,10 @@ class MHApplication(gui3d.Application, mh.Application):
 
         # Restore main window size and position
         if self.settings.get('restoreWindowSize', False):
-            self.mainwin.resize(
-                self.settings.get('windowWidth', mainwinSize[0]),
-                self.settings.get('windowHeight', mainwinSize[1]))
-
-            self.mainwin.move(
-                self.settings.get('windowXPos', mainwinPos[0]),
-                self.settings.get('windowYPos', mainwinPos[1]))
+            self.mainwin.restoreGeometry(self.settings.get(
+                'windowGeometry', mainwinGeometry))
         else:
-            self.mainwin.resize(mainwinSize[0], mainwinSize[1])
-            self.mainwin.move(mainwinPos[0], mainwinPos[1])
+            self.mainwin.restoreGeometry(mainwinGeometry)
 
         self._processCommandlineArgs(beforeLoaded = False)
 
@@ -713,11 +722,7 @@ class MHApplication(gui3d.Application, mh.Application):
 
     def onStop(self, event):
         if self.settings.get('restoreWindowSize', False):
-            self.settings['windowWidth'] = self.mainwin.width()
-            self.settings['windowHeight'] = self.mainwin.height()
-
-            self.settings['windowXPos'] = self.mainwin.pos().x()
-            self.settings['windowYPos'] = self.mainwin.pos().y()
+            self.settings['windowGeometry'] = self.mainwin.storeGeometry()
 
         self.saveSettings(True)
         self.unloadPlugins()
@@ -891,7 +896,7 @@ class MHApplication(gui3d.Application, mh.Application):
         log._logLevelColors[log.ERROR] = 'red'
         log._logLevelColors[log.CRITICAL] = 'red'
 
-        f = open(os.path.join(mh.getSysDataPath("themes/"), theme + ".mht"), 'r')
+        f = open(os.path.join(mh.getSysDataPath("themes/"), theme + ".mht"), 'rU')
 
         update_log = False
         for data in f.readlines():
@@ -996,22 +1001,25 @@ class MHApplication(gui3d.Application, mh.Application):
     # Caption
     def setCaption(self, caption):
         """Set the main window caption."""
-        mh.setCaption(caption.encode('utf8'))
+        mh.setCaption(caption)
 
     def updateFilenameCaption(self):
         """Calculate and set the window title according to the
         name of the current open file and the version of MH."""
-        filename = self.currentFile.filename
+        filename = self.currentFile.name
         if filename is None:
             filename = "Untitled"
         if mh.isRelease():
+            from getpath import pathToUnicode
             self.setCaption(
                 "MakeHuman %s - [%s][*]" %
-                (mh.getVersionStr(), filename))
+                (mh.getVersionStr(), pathToUnicode(filename)))
         else:
+            from getpath import pathToUnicode
             self.setCaption(
                 "MakeHuman r%s (%s) - [%s][*]" %
-                (os.environ['HGREVISION'], os.environ['HGNODEID'], filename))
+                (os.environ['HGREVISION'], os.environ['HGNODEID'], 
+                pathToUnicode(filename)))
         self.mainwin.setWindowModified(self.currentFile.modified)
 
     # Global status bar
@@ -1055,7 +1063,7 @@ class MHApplication(gui3d.Application, mh.Application):
         if self.dialog is None:
             self.dialog = gui.Dialog(self.mainwin)
             self.dialog.helpIds.update(self.helpIds)
-        self.dialog.prompt(title, text, button1Label, button2Label, button1Action, button2Action, helpId, fmtArgs)
+        return self.dialog.prompt(title, text, button1Label, button2Label, button1Action, button2Action, helpId, fmtArgs)
 
     def setGlobalCamera(self):
         human = self.selectedHuman
@@ -1136,22 +1144,42 @@ class MHApplication(gui3d.Application, mh.Application):
 
     def setScene(self, scene):
         """
-        Set the scene used for rendering the viewport.
+        Set the scene used for rendering the viewport,
+        and connect its events with appropriate handler methods.
         """
-        self._scene = scene
-        @self._scene.mhEvent
-        def onModified(event):
-            if event.file == self.scene and event.objectWasChanged:
-                self._sceneChanged()
+        setSceneEvent = managed_file.FileModifiedEvent.fromObjectAssignment(
+            scene.file if scene else None,
+            self._scene.file if self._scene else None)
 
-        self._sceneChanged()
+        self._scene = scene
+
+        if self._scene is None:
+            return
+
+        @self._scene.file.mhEvent
+        def onModified(event):
+            self._sceneChanged(event)
+
+        self._sceneChanged(setSceneEvent)
 
     scene = property(getScene, setScene)
 
-    def _sceneChanged(self):
-        from glmodule import setSceneLighting
-        setSceneLighting(self.scene)
-        # TODO: Possibly emit an onSceneChanged event
+    def _sceneChanged(self, event):
+        """
+        Method to be called internally when the scene is modified,
+        that updates the view according to the modified scene,
+        and emits the onSceneChanged event application - wide.
+        """
+        if event.file != self.scene.file:
+            return
+
+        if event.objectWasChanged:
+            from glmodule import setSceneLighting
+            setSceneLighting(self.scene)
+
+        for category in self.categories.itervalues():
+            for task in category.tasks:
+                task.callEvent('onSceneChanged', event)
 
     # Shortcuts
     def setShortcut(self, modifier, key, action):
@@ -1222,6 +1250,16 @@ class MHApplication(gui3d.Application, mh.Application):
         mh.changeCategory("Modelling")
         self.redraw()
 
+    def doSave(self):
+        if self.currentFile.path:
+            from guisave import saveMHM
+            self.currentTask.hide()
+            saveMHM(self.currentFile.path)
+            self.currentTask.show()
+            self.redraw()
+        else:
+            self.goToSave()
+
     def goToSave(self):
         mh.changeTask("Files", "Save")
         self.redraw()
@@ -1291,10 +1329,11 @@ class MHApplication(gui3d.Application, mh.Application):
             self._resetHuman()
 
     def _resetHuman(self):
-        self.currentFile.close()
         self.selectedHuman.resetMeshValues()
         self.selectedHuman.applyAllTargets(self.progress)
         self.clearUndoRedo()
+        # Reset mesh is never forced to wireframe
+        self.actions.wireframe.setChecked(False)
 
     # Camera navigation
     def rotateCamera(self, axis, amount):
@@ -1464,7 +1503,7 @@ class MHApplication(gui3d.Application, mh.Application):
         toolbar = self.file_toolbar = mh.addToolBar("File")
 
         self.actions.load      = action('load',      'Load',          self.goToLoad)
-        self.actions.save      = action('save',      'Save',          self.goToSave)
+        self.actions.save      = action('save',      'Save',          self.doSave)
         self.actions.export    = action('export',    'Export',        self.goToExport)
 
 

@@ -47,9 +47,6 @@ import gui
 from core import G
 import guirender
 
-import os
-import scene
-
 
 class SceneItem(object):
     def __init__(self, sceneview, label=""):
@@ -212,11 +209,9 @@ class SceneEditorTaskView(guirender.RenderTaskView):
         self.addButton = itemBox.addWidget(gui.Button('Add...'))
         self.adder = SceneItemAdder(self)
         self.propsBox.addWidget(self.adder.widget)
-
         self.activeItem = None
-        self.scene = scene.Scene()
-        self.readScene()
-        self.updateFileTitle()
+
+        self._scene = None
 
         def doLoad():
             filename = mh.getOpenFileName(
@@ -229,22 +224,14 @@ class SceneEditorTaskView(guirender.RenderTaskView):
 
         def doSave(filename):
             ok = self.scene.save(filename)
-            if ok and G.app.scene.path is not None \
-                and G.app.scene.path == self.scene.path:
+            if ok and self._scene.file.path is not None \
+                and self._scene.file.path == self.scene.file.path:
                 # Refresh MH's current scene if it was modified.
-                G.app.scene.reload()
-
-        @self.scene.mhEvent
-        def onModified(event):
-            self.updateFileTitle()
-            if event.objectWasChanged:
-                G.app.setScene(self.scene)
-            if any(term in event.reasons for term in ("load", "add", "remove")):
-                self.readScene()
+                self._scene.load(self._scene.file.path)
 
         @self.loadButton.mhEvent
         def onClicked(event):
-            if self.scene.modified:
+            if self.scene.file.modified:
                 G.app.prompt('Confirmation',
                     'Your scene is unsaved. Are you sure you want to close it?',
                     'Close', 'Cancel', doLoad)
@@ -253,19 +240,19 @@ class SceneEditorTaskView(guirender.RenderTaskView):
 
         @self.saveButton.mhEvent
         def onClicked(event):
-            if self.scene.path is None:
+            if self.scene.file.path is None:
                 self.saveAsButton.callEvent('onClicked', event)
             else:
-                doSave(self.scene.path)
+                doSave(self.scene.file.path)
 
         @self.closeButton.mhEvent
         def onClicked(event):
-            if self.scene.modified:
+            if self.scene.file.modified:
                 G.app.prompt('Confirmation',
                     'Your scene is unsaved. Are you sure you want to close it?',
-                    'Close', 'Cancel', self.scene.close)
+                    'Close', 'Cancel', self.scene.reset)
             else:
-                self.scene.close()
+                self.scene.reset()
 
         @self.saveAsButton.mhEvent
         def onClicked(event):
@@ -285,6 +272,10 @@ class SceneEditorTaskView(guirender.RenderTaskView):
         def onClicked(event):
             self.adder.showProps()
 
+    @property
+    def scene(self):
+        return G.app.scene
+
     def readScene(self):
         self.adder.showProps()
         self.itemList.setData([])
@@ -294,26 +285,42 @@ class SceneEditorTaskView(guirender.RenderTaskView):
         for item in self.itemList.getItems():
             self.propsBox.addWidget(item.getUserData().widget)
 
-    def updateFileTitle(self):
-        lbltxt = self.scene.filename
+    def updateFileTitle(self, file):
+        lbltxt = file.name
         if lbltxt is None:
             lbltxt = '<New scene>'
-        if self.scene.modified:
+        if file.modified:
             lbltxt += '*'
         self.fnlbl.setText(lbltxt)
 
+    def onSceneChanged(self, event):
+        if not self.isShown():
+            return
+
+        self.updateFileTitle(event.file)
+        if any(term in event.reasons for term in ("load", "add", "remove")):
+            self.readScene()
+
     def onShow(self, event):
+        # Swap to edited scene and store app's scene
+        temp = self._scene
+        self._scene = G.app.scene
+        G.app.scene = temp
+
         guirender.RenderTaskView.onShow(self, event)
 
-        # Set currently edited scene
-        self._appscene = G.app.scene
-        G.app.setScene(self.scene)
+        # Create edited scene if it does not exist
+        if G.app.scene is None:
+            from scene import Scene
+            G.app.scene = Scene()
 
     def onHide(self, event):
-        # Restore selected scene
-        G.app.setScene(self._appscene)
-
         guirender.RenderTaskView.onHide(self, event)
+
+        # Restore app's scene and store edited scene
+        temp = self._scene
+        self._scene = G.app.scene
+        G.app.scene = temp
 
 
 class BooleanInput(gui.GroupBox):

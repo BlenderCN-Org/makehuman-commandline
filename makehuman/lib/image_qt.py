@@ -50,6 +50,8 @@ def load(path):
     if isinstance(path, QtGui.QImage):
         im = path
     else:
+        import getpath
+        path = getpath.pathToUnicode(path)
         im = QtGui.QImage(path)
     if im.isNull():
         raise RuntimeError("unable to load image '%s'" % path)
@@ -104,8 +106,25 @@ def save(path, data):
     """
     Save Image (data) to file.
     """
+    import getpath
+    path = getpath.pathToUnicode(path)
+
     im = toQImage(data)
     format = "PNG" if path.lower().endswith('.thumb') else None
     if not im.save(path, format):
         raise RuntimeError('error saving image %s' % path)
+
+def resized(img, width, height, filter=0):
+    """
+    Resize image using Qt image library. If filter > 0 bi-linear interpolation
+    will be used. Note that Qt does not support bi-cubic interpolation.
+    """
+    qi = img.toQImage()
+    if filter > 0:
+        transform = QtCore.Qt.SmoothTransformation
+    else:
+        transform = QtCore.Qt.FastTransformation
+    qi = qi.scaled(QtCore.QSize(width, height), 
+                   transformMode=transform)
+    return load(qi)
 

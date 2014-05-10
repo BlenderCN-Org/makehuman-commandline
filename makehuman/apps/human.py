@@ -63,11 +63,10 @@ class Human(guicommon.Object):
 
         self.mesh.setCameraProjection(0)
         self.mesh.setPickable(True)
-        self.mesh.setShadeless(0)
-        self.mesh.setCull(1)
+        self.setShadeless(0)
+        self.setCull(1)
         self.meshData = self.mesh
 
-        self._staticFaceMask = None
         self.maskFaces()
 
         self._hairProxy = None
@@ -103,7 +102,7 @@ class Human(guicommon.Object):
     # TODO introduce better system for managing proxies, nothing done for clothes yet
     def setHairProxy(self, proxy):
         self._hairProxy = proxy
-        event = events3d.HumanEvent(self, 'proxy')
+        event = events3d.HumanEvent(self, 'proxyChange')
         event.proxy = 'hair'
         self.callEvent('onChanged', event)
     def getHairProxy(self):
@@ -113,7 +112,7 @@ class Human(guicommon.Object):
 
     def setEyesProxy(self, proxy):
         self._eyesProxy = proxy
-        event = events3d.HumanEvent(self, 'proxy')
+        event = events3d.HumanEvent(self, 'proxyChange')
         event.proxy = 'eyes'
         self.callEvent('onChanged', event)
     def getEyesProxy(self):
@@ -123,7 +122,7 @@ class Human(guicommon.Object):
 
     def setGenitalsProxy(self, proxy):
         self._genitalsProxy = proxy
-        event = events3d.HumanEvent(self, 'proxy')
+        event = events3d.HumanEvent(self, 'proxyChange')
         event.proxy = 'genitals'
         self.callEvent('onChanged', event)
     def getGenitalsProxy(self):
@@ -131,16 +130,11 @@ class Human(guicommon.Object):
 
     genitalsProxy = property(getGenitalsProxy, setGenitalsProxy)
 
-
-    def getFaceMask(self):
+    def maskFaces(self):
         """
-        Get initial (static) face mask for the human basemesh that hides all
-        the faces associated with helper geometry.
+        Set up the initial (static) face mask for the human basemesh that hides
+        all the faces associated with helper geometry.
         """
-        if self._staticFaceMask is not None:
-            # Return cached copy for performance (this mask never changes anyway)
-            return self._staticFaceMask
-
         mesh = self.meshData
         group_mask = np.ones(len(mesh._faceGroups), dtype=bool)
         for g in mesh._faceGroups:
@@ -149,10 +143,7 @@ class Human(guicommon.Object):
         face_mask = group_mask[mesh.group]
         self._staticFaceMask = face_mask
 
-        return face_mask
-
-    def maskFaces(self):
-        self.meshData.changeFaceMask(self.getFaceMask())
+        self.meshData.changeFaceMask(self.staticFaceMask)
         self.meshData.updateIndexBufferFaces()
 
 
@@ -243,6 +234,17 @@ class Human(guicommon.Object):
             return table[ptype]
         except KeyError:
             return None
+
+    def getProxyObjects(self):
+        return [ pxy.object for pxy in self.getProxies(includeHumanProxy=False) ]
+
+    def getMeshes(self):
+        """
+        All mesh objects that belong to this human, usually everything that has
+        to be exported. This can replace exportutils.collect
+        Result is a list of objects of class Human and Proxy.
+        """
+        return [self] + self.getProxies(includeHumanProxy=False)
 
     # Overriding hide and show to account for both human base and the hairs!
 
@@ -517,7 +519,7 @@ class Human(guicommon.Object):
         Returns the bounding box of the basemesh without the helpers, ignoring
         any other facemask.
         """
-        return self.meshData.calcBBox(fixedFaceMask = self.getFaceMask())
+        return self.meshData.calcBBox(fixedFaceMask = self.staticFaceMask)
 
     def _setHeightVals(self):
         self.maxheightVal = max(0.0, self.height * 2 - 1)
@@ -829,7 +831,7 @@ class Human(guicommon.Object):
         if len(modifier.macroDependencies) > 0:
             for var in modifier.macroDependencies:
                 if var not in self._modifier_varMapping:
-                    log.error("Error var %s not mapped", var)
+                    log.error("Modifier dependency map: Error var %s not mapped", var)
                     continue
                 depMGroup = self._modifier_varMapping[var]
 
@@ -878,10 +880,23 @@ class Human(guicommon.Object):
                 if len(self._modifier_dependencyMapping[dep]) == 0:
                     del self._modifier_dependencyMapping[dep]
 
+            # Remove no longer controlled targets from stack (still requires applyAllTargets() for update)
+            targets = self._getModifierTargets()
+            for t in modifier.targets:
+                if t[0] not in targets:
+                    self.setDetail(t[0], None)
+
             self._modifier_type_cache = dict()
         except:
-            log.debug('Failed to remove modifier % from human.', modifier.fullName)
+            log.debug('Failed to remove modifier %s from human.', modifier.fullName, exc_info=True)
             pass
+
+    def _getModifierTargets(self):
+        """
+        Retrieve all targets controlled by modifiers currently attached to this
+        human.
+        """
+        return set( [t[0] for m in self.modifiers for t in m.targets] )
 
     def applyAllTargets(self, progressCallback=None, update=True):
         """
@@ -1024,6 +1039,7 @@ class Human(guicommon.Object):
         self.africanVal = 1.0/3
 
     def resetMeshValues(self):
+        self.setSubdivided(False, update=False)
         self.setDefaultValues()
 
         self.targetsDetailStack = {}
@@ -1056,14 +1072,19 @@ class Human(guicommon.Object):
         return verts.mean(axis=0)
 
     def load(self, filename, update=True, progressCallback=None):
-
+        from codecs import open
         log.message("Loading human from MHM file %s.", filename)
+        event = events3d.HumanEvent(self, 'load')
+        event.path = filename
+        self.callEvent('onChanging', event)
 
         self.resetMeshValues()
         self.blockEthnicUpdates = True
 
+        subdivide = False
+
         # TODO perhaps create progress indicator that depends on line count of mhm file?
-        f = open(filename, 'r')
+        f = open(filename, 'rU', encoding="utf-8")
 
         for lh in G.app.loadHandlers.values():
             lh(self, ['status', 'started'])
@@ -1075,8 +1096,10 @@ class Human(guicommon.Object):
                 if lineData[0] == 'version':
                     log.message('Version %s', lineData[1])
                 elif lineData[0] == 'tags':
-                    for tag in lineData:
+                    for tag in lineData[1:]:
                         log.debug('Tag %s', tag)
+                elif lineData[0] == 'subdivide':
+                    subdivide = lineData[1].lower() in ['true', 'yes']
                 elif lineData[0] in G.app.loadHandlers:
                     G.app.loadHandlers[lineData[0]](self, lineData)
                 else:
@@ -1090,23 +1113,34 @@ class Human(guicommon.Object):
         self.blockEthnicUpdates = False
         self._setEthnicVals()
 
-        self.callEvent('onChanged', events3d.HumanEvent(self, 'load'))
+        self.callEvent('onChanged', event)
 
         if update:
             self.applyAllTargets(progressCallback)
 
-        G.app.currentFile.loaded(filename)
+        self.setSubdivided(subdivide)
+
         log.message("Done loading MHM file.")
 
     def save(self, filename, tags):
+        from codecs import open
+        from progress import Progress
+        progress = Progress(len(G.app.saveHandlers))
+        event = events3d.HumanEvent(self, 'save')
+        event.path = filename
+        self.callEvent('onChanging', event)
 
-        f = open(filename, 'w')
+        f = open(filename, "w", encoding="utf-8")
         f.write('# Written by MakeHuman %s\n' % getVersionStr())
         f.write('version %s\n' % getShortVersion())
         f.write('tags %s\n' % tags)
 
         for handler in G.app.saveHandlers:
             handler(self, f)
+            progress.step()
+
+        f.write('subdivide %s' % self.isSubdivided())
 
         f.close()
-        G.app.currentFile.saved(filename)
+        progress(1)
+        self.callEvent('onChanged', event)

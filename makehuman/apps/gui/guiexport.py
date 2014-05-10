@@ -45,6 +45,7 @@ import gui3d
 import guipose
 import log
 
+
 class ExportTaskView(guipose.PoseModeTaskView):
     def __init__(self, category):
         guipose.PoseModeTaskView.__init__(self, category, 'Export')
@@ -52,12 +53,11 @@ class ExportTaskView(guipose.PoseModeTaskView):
         self.formats = []
         self.recentlyShown = None
         self._requiresUpdate = True
-
-        exportPath = mh.getPath('exports')
+        self.showOverwriteWarning = False
 
         self.fileentry = self.addTopWidget(gui.FileEntryView('Export', mode='save'))
-        self.fileentry.setDirectory(exportPath)
-        self.fileentry.setFilter('All Files (*.*)')
+        self.fileentry.directory = mh.getPath('exports')
+        self.fileentry.filter = 'All Files (*.*)'
 
         self.exportBodyGroup = []
         self.exportHairGroup = []
@@ -89,9 +89,8 @@ class ExportTaskView(guipose.PoseModeTaskView):
         self.updateGui()
 
         @self.fileentry.mhEvent
-        def onFileSelected(filename):
-            path = os.path.normpath(os.path.join(exportPath, filename))
-            dir, name = os.path.split(path)
+        def onFileSelected(event):
+            dir, name = os.path.split(event.path)
             name, ext = os.path.splitext(name)
 
             if not os.path.exists(dir):
@@ -102,19 +101,22 @@ class ExportTaskView(guipose.PoseModeTaskView):
                     log.warning("expected extension '.%s' but got '%s'", targetExt, ext)
                 return os.path.join(dir, name + '.' + targetExt)
 
-            found = False
-            for exporter, radio, options in self.formats:
-                if radio.selected:
-                    exporter.export(gui3d.app.selectedHuman, filename)
-                    found = True
-                    break
-
-            if not found:
+            for exporter in [f[0] for f in self.formats if f[1].selected]:
+                if self.showOverwriteWarning and \
+                    event.source in ('button', 'return') and \
+                    os.path.exists(os.path.join(dir, name + '.' + exporter.fileExtension)):
+                    if not gui3d.app.prompt("File exists", "The file already exists. Overwrite?", "Yes", "No"):
+                        break;
+                exporter.export(gui3d.app.selectedHuman, filename)
+                gui3d.app.status(u'The mesh has been exported to %s.', dir)
+                self.showOverwriteWarning = False
+                break
+            else:
                 log.error("Unknown export format selected!")
-                return
 
-            gui3d.app.prompt('Info', u'The mesh has been exported to %s.', 'OK', fmtArgs = dir)
-
+        @self.fileentry.mhEvent
+        def onChange(text):
+            self.showOverwriteWarning = True
 
     _scales = {
         "decimeter": 1.0,
@@ -165,13 +167,13 @@ class ExportTaskView(guipose.PoseModeTaskView):
         return [exporter.name for exporter, _, _ in self.formats]
 
     def setFileExtension(self, extension, filter='All Files (*.*)'):
-        self.fileentry.setFilter(filter)
-        path,ext = os.path.splitext(unicode(self.fileentry.edit.text()))
+        self.fileentry.filter = filter
+        path, ext = os.path.splitext(self.fileentry.text)
         if ext:
             if extension:
-                self.fileentry.edit.setText("%s.%s" % (path, extension.lstrip('.')))
+                self.fileentry.text = "%s.%s" % (path, extension.lstrip('.'))
             else:
-                self.fileentry.edit.setText(path)
+                self.fileentry.text = path
 
     def updateGui(self):
         for exporter, radio, options in self.formats:
@@ -180,6 +182,7 @@ class ExportTaskView(guipose.PoseModeTaskView):
                 self.optionsBox.showWidget(options)
                 self.setFileExtension(exporter.fileExtension, exporter.filter)
                 exporter.onShow(self)
+                options.setVisible( len(options.children) > 0 )
                 self.recentlyShown = exporter
                 break
 
@@ -204,6 +207,13 @@ class ExportTaskView(guipose.PoseModeTaskView):
         self._requiresUpdate = False
         self.updateGui()
 
+    def onHumanChanged(self, event):
+        # If a human was loaded, update the line edit
+        if event.change in ('load', 'save'):
+            self.fileentry.text = gui3d.app.currentFile.title
+        elif event.change == 'reset':
+            self.fileentry.text = ""
+
     def onShow(self, event):
         guipose.PoseModeTaskView.onShow(self, event)
 
@@ -211,11 +221,8 @@ class ExportTaskView(guipose.PoseModeTaskView):
 
         self.fileentry.setFocus()
 
-
     def onHide(self, event):
         guipose.PoseModeTaskView.onHide(self, event)
-
-        human = gui3d.app.selectedHuman
 
         for exporter, radio, _ in self.formats:
             if radio.selected:
