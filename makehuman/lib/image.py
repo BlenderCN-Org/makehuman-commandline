@@ -56,6 +56,7 @@ FILTER_NEAREST = 0   # Nearest neighbour resize filter (no real filtering)
 FILTER_BILINEAR = 1  # Bi-linear filter
 FILTER_BICUBIC = 2   # Bi-cubic filter (not supported with Qt, only PIL)
 
+
 class Image(object):
     """Container for handling images.
 
@@ -91,22 +92,7 @@ class Image(object):
         which are equivalent to W (Grayscale), WA (Grayscale with Alpha),
         RGB, and RGBA respectively.
         """
-        import sys
-        if "PyQt4" in sys.modules.keys():
-            # If Qt libraries are already loaded, use the Qt back-end (default) 
-            import image_qt as image_lib
-        else:
-            global skip_dependency_nag
-            try:
-                import image_pil as image_lib
-                if not skip_dependency_nag:
-                    log.debug("Image: Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
-                    skip_dependency_nag = True
-            except:
-                if not skip_dependency_nag:
-                    log.debug("Image: PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
-                    skip_dependency_nag = True
-                import image_qt as image_lib
+        image_lib = get_native_image_backend()
 
         if path is not None:
             self._is_empty = False
@@ -179,23 +165,7 @@ class Image(object):
 
     def save(self, path):
         """Save the Image to a file."""
-        import sys
-        if "PyQt4" in sys.modules.keys():
-            # If Qt libraries are already loaded, use the Qt back-end (default) 
-            import image_qt as image_lib
-        else:
-            global skip_dependency_nag
-
-            try:
-                import image_pil as image_lib
-                if not skip_dependency_nag:
-                    log.debug("Image: Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
-                    skip_dependency_nag = True
-            except:
-                if not skip_dependency_nag:
-                    log.debug("Image: PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
-                    skip_dependency_nag = True
-                import image_qt as image_lib
+        image_lib = _get_native_image_backend()
 
         image_lib.save(path, self._data)
 
@@ -389,4 +359,28 @@ def _isQPixmap(img):
         return isinstance(img, image_qt.QtGui.QPixmap)
     else:
         return False
+
+def _get_native_image_backend():
+    """
+    Retrieve the available native image I/O library.
+    Prevents loading pyQt dependencies if they are not loaded yet, and if
+    it can find the PIL library.
+    """
+    import sys
+    if "PyQt4" in sys.modules.keys():
+        # If Qt libraries are already loaded, use the Qt back-end (default) 
+        import image_qt as image_lib
+    else:
+        global skip_dependency_nag
+        try:
+            import image_pil as image_lib
+            if not skip_dependency_nag:
+                log.debug("Image: Loaded PIL as alternative image back-end to avoid loading Qt as dependency.")
+                skip_dependency_nag = True
+        except:
+            if not skip_dependency_nag:
+                log.debug("Image: PIL libraries not installed. Falling back to loading Qt libraries for image loading.")
+                skip_dependency_nag = True
+            import image_qt as image_lib
+    return image_lib
 
