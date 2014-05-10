@@ -51,17 +51,45 @@ _modes = {
          
 def load(path):
     image = img.open(path)
-    if image.mode not in ("L", "RGB", "RGBA"):
-        image = image.convert("RGBA")
-    w, h = image.size
-    d = _modes[image.mode]
-    pixels = image.tostring("raw", image.mode)
-    data = np.fromstring(pixels, dtype=np.uint8).reshape((h,w,d))
-    return data
+    return fromPILImage(image)
 
 def save(path, data):
     h, w, d = data.shape
     mode = [None,'L','LA','RGB','RGBA'][d]
     image = img.fromstring(mode, (w, h), data.tostring())
     image.save(path)
+
+def toPILImage(imgobj):
+    if not hasattr(img, 'fromstring'):
+        raise RuntimeError('Failed to use PIL "fromstring". Requires PIL version 1.1.4 or higher.')
+    if imgobj.components == 4:
+        mode = 'RGBA'
+    else:
+        mode = 'RGB'
+    print len (imgobj.data.tostring()), imgobj.width, imgobj.height, imgobj.components 
+    return img.fromstring(mode, (imgobj.width, imgobj.height), 
+                          imgobj.data.tostring())
+
+def fromPILImage(pilImg):
+    if pilImg.mode not in ("L", "RGB", "RGBA"):
+        pilImg = pilImg.convert("RGBA")
+
+    w, h = pilImg.size
+    d = _modes[pilImg.mode]
+    pixels = pilImg.tostring("raw", pilImg.mode)
+    data = np.fromstring(pixels, dtype=np.uint8).reshape((h,w,d))
+    return data
+
+def resized(imgobj, width, height, filter=filter):
+    pImg = toPILImage(imgobj)
+    if filter == 0:
+        transform = img.NEAREST
+    elif filter == 1:
+        transform = img.BILINEAR
+    elif filter == 2:
+        transform = img.BICUBIC
+    else:
+        transform = img.ANTIALIAS
+    pImg = pImg.resize((width, height), transform)
+    return fromPILImage(pImg)
 

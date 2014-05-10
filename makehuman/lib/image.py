@@ -92,7 +92,7 @@ class Image(object):
         which are equivalent to W (Grayscale), WA (Grayscale with Alpha),
         RGB, and RGBA respectively.
         """
-        image_lib = get_native_image_backend()
+        image_lib = _get_native_image_backend()
 
         if path is not None:
             self._is_empty = False
@@ -215,8 +215,8 @@ class Image(object):
             return self._data[ymap, :][:, xmap]
         else:
             # NOTE: bi-cubic filtering is not supported by Qt, use bi-linear
-            import image_qt
-            return image_qt.resized(self, width, height, filter=filter)
+            image_lib = _get_native_image_backend()
+            return image_lib.resized(self, width, height, filter=filter)
 
     def resized(self, width, height, filter=FILTER_NEAREST):
         """Get a resized copy of the Image."""
