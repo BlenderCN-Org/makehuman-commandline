@@ -365,7 +365,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="MakeHuman, an open source tool for making 3D characters", epilog="MakeHuman - http://www.makehuman.org")
 
     # Input argument (optional positional argument)
-    parser.add_argument("mhmFile", default=None, nargs='?', help="Load human from .mhm file (optional)")
+    parser.add_argument("mhmFile", default=None, nargs='?', help="Load human from .mhm file (optional, GUI mode only)")
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
