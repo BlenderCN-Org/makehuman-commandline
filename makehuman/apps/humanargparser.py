@@ -83,7 +83,7 @@ def addModelingArguments(argparser):
     matGroup.add_argument("--material", metavar="materialFile", default=None, help="Specify a skin material to apply to the human")
     # TODO
     matGroup.add_argument("--listproxymaterials", metavar=("proxyType"), help="List the available materials for the specified proxy")
-    matGroup.add_argument("--proxymaterial", metavar=("proxyType","materialFile"), default=None, help="Specify a material to apply to the proxy")
+    matGroup.add_argument("--proxymaterial", metavar=("proxyType","materialFile"), nargs=2, default=None, help="Specify a material to apply to the proxy")
 
     return argparser
 
