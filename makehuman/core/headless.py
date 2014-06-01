@@ -52,6 +52,9 @@ import sys
 sys.path.append("./plugins")
 MhxConfig = (__import__("9_export_mhx", fromlist = ["MhxConfig"])).MhxConfig
 MHXExporter = (__import__("9_export_mhx", fromlist = ["mhx_main"])).mhx_main
+OBJExporter = (__import__("9_export_obj", fromlist = ["mh2obj"])).mh2obj
+import exportutils
+
 
 class ConsoleApp():
     def __init__(self):
@@ -82,16 +85,19 @@ def run(args):
         log.warning("Debug test detected that Qt libraries were imported in the console version! This might indicate bad separation from GUI, but is currently normal because MH uses Qt as (only) back-end for loading images.")
 
 def save(human, filepath):
-    if not filepath.endswith("mhx"):
-        raise RuntimeError("Only MHX export is currently supported")
-
-    ## Export
-    exportCfg = MhxConfig()
-    exportCfg.scale = 0.1
-    exportCfg.unit = "meter"
-    exportCfg.feetOnGround = True
-    exportCfg.useRotationLimits = True
-    exportCfg.useRigify = False
-    exportCfg.setHuman(human)
-    MHXExporter.exportMhx(filepath, exportCfg)
-
+    if filepath.endswith("mhx"):
+        ## Export
+        exportCfg = MhxConfig()
+        exportCfg.scale = 0.1
+        exportCfg.unit = "meter"
+        exportCfg.feetOnGround = True
+        exportCfg.useRotationLimits = True
+        exportCfg.useRigify = False
+        exportCfg.setHuman(human)
+        MHXExporter.exportMhx(filepath, exportCfg)
+    elif filepath.endswith("obj"):
+        exportCfg = exportutils.config.Config()
+        exportCfg.setHuman(human)
+        OBJExporter.exportObj(filepath, config=exportCfg)
+    else :
+        raise RuntimeError("Only MHX and OBJ export is currently supported")
