@@ -101,8 +101,11 @@ def validate(argOptions):
     if argOptions.get('listmodifiers', False):
         import humanmodifier
         modifiers = _loadModifiers(human=None)
-        print "Available modifier names:"
-        print "\n".join(['  %s\t%s' % (m.fullName, m.description) for m in modifiers])
+        print """
+Available modifiers:
+        name    { min, max} : description
+  ==========================================================================="""
+        print "\n".join(['  %s\t{%s, %s}\t: %s' % (m.fullName, m.getMin(), m.getMax(), m.description) for m in modifiers])
         sys.exit()
 
     if argOptions.get('listproxytypes', False):
