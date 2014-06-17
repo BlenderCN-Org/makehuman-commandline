@@ -202,14 +202,6 @@ class MHApplication(gui3d.Application, mh.Application):
                 'realtimeFitting': True,
                 'sliderImages': True,
                 'excludePlugins': [
-                    "0_modeling_5_editing",
-                    "0_modeling_8_random",
-                    "2_posing_expression",
-                    "3_libraries_animation",
-                    "3_libraries_posing",
-                    "4_rendering_mitsuba",
-                    "4_rendering_povray",
-                    "5_settings_censor",
                     "7_data",
                     "7_example",
                     "7_material_editor",
@@ -218,7 +210,6 @@ class MHApplication(gui3d.Application, mh.Application):
                     "7_scripting",
                     "7_shell",
                     "7_targets",
-                    "4_rendering_aqsis"
                 ],
                 'rtl': False,
                 'invertMouseWheel': False,
@@ -704,7 +695,7 @@ class MHApplication(gui3d.Application, mh.Application):
                 mhmFile = self.args.get('mhmFile')
                 log.message("Loading MHM file %s (as specified by commandline argument)", mhmFile)
                 if os.path.isfile(mhmFile):
-                    self.files.load.loadMHM(mhmFile)
+                    self.loadHumanMHM(mhmFile)
                 else:
                     log.error("Failed to load MHM file. The MHM file specified as argument (%s) does not exist!", mhmFile)
             if self.args.get('runtests', False):
@@ -1481,72 +1472,72 @@ class MHApplication(gui3d.Application, mh.Application):
         # Global actions (eg. keyboard shortcuts)
         toolbar = None
 
-        self.actions.rendering = action('rendering', 'Rendering',     self.goToRendering)
-        self.actions.modelling = action('modelling', 'Modelling',     self.goToModelling)
-        self.actions.exit      = action('exit'     , 'Exit',          self.promptAndExit)
+        self.actions.rendering = action('rendering', self.getLanguageString('Rendering'),     self.goToRendering)
+        self.actions.modelling = action('modelling', self.getLanguageString('Modelling'),     self.goToModelling)
+        self.actions.exit      = action('exit'     , self.getLanguageString('Exit'),          self.promptAndExit)
 
-        self.actions.rotateU   = action('rotateU',   'Rotate Up',     self.rotateUp)
-        self.actions.rotateD   = action('rotateD',   'Rotate Down',   self.rotateDown)
-        self.actions.rotateR   = action('rotateR',   'Rotate Right',  self.rotateRight)
-        self.actions.rotateL   = action('rotateL',   'Rotate Left',   self.rotateLeft)
-        self.actions.panU      = action('panU',      'Pan Up',        self.panUp)
-        self.actions.panD      = action('panD',      'Pan Down',      self.panDown)
-        self.actions.panR      = action('panR',      'Pan Right',     self.panRight)
-        self.actions.panL      = action('panL',      'Pan Left',      self.panLeft)
-        self.actions.zoomIn    = action('zoomIn',    'Zoom In',       self.zoomIn)
-        self.actions.zoomOut   = action('zoomOut',   'Zoom Out',      self.zoomOut)
+        self.actions.rotateU   = action('rotateU',   self.getLanguageString('Rotate Up'),     self.rotateUp)
+        self.actions.rotateD   = action('rotateD',   self.getLanguageString('Rotate Down'),   self.rotateDown)
+        self.actions.rotateR   = action('rotateR',   self.getLanguageString('Rotate Right'),  self.rotateRight)
+        self.actions.rotateL   = action('rotateL',   self.getLanguageString('Rotate Left'),   self.rotateLeft)
+        self.actions.panU      = action('panU',      self.getLanguageString('Pan Up'),        self.panUp)
+        self.actions.panD      = action('panD',      self.getLanguageString('Pan Down'),      self.panDown)
+        self.actions.panR      = action('panR',      self.getLanguageString('Pan Right'),     self.panRight)
+        self.actions.panL      = action('panL',      self.getLanguageString('Pan Left'),      self.panLeft)
+        self.actions.zoomIn    = action('zoomIn',    self.getLanguageString('Zoom In'),       self.zoomIn)
+        self.actions.zoomOut   = action('zoomOut',   self.getLanguageString('Zoom Out'),      self.zoomOut)
 
-        self.actions.profiling = action('profiling', 'Profiling',     self.toggleProfiling, toggle=True)
+        self.actions.profiling = action('profiling', self.getLanguageString('Profiling'),     self.toggleProfiling, toggle=True)
 
 
         # 1 - File toolbar
         toolbar = self.file_toolbar = mh.addToolBar("File")
 
-        self.actions.load      = action('load',      'Load',          self.goToLoad)
-        self.actions.save      = action('save',      'Save',          self.doSave)
-        self.actions.export    = action('export',    'Export',        self.goToExport)
+        self.actions.load      = action('load',      self.getLanguageString('Load'),          self.goToLoad)
+        self.actions.save      = action('save',      self.getLanguageString('Save'),          self.doSave)
+        self.actions.export    = action('export',    self.getLanguageString('Export'),        self.goToExport)
 
 
         # 2 - Edit toolbar
         toolbar = self.edit_toolbar = mh.addToolBar("Edit")
 
-        self.actions.undo      = action('undo',      'Undo',          self.undo)
-        self.actions.redo      = action('redo',      'Redo',          self.redo)
-        self.actions.reset     = action('reset',     'Reset',         self.resetHuman)
+        self.actions.undo      = action('undo',      self.getLanguageString('Undo'),          self.undo)
+        self.actions.redo      = action('redo',      self.getLanguageString('Redo'),          self.redo)
+        self.actions.reset     = action('reset',     self.getLanguageString('Reset'),         self.resetHuman)
 
 
         # 3 - View toolbar
         toolbar = self.view_toolbar = mh.addToolBar("View")
 
-        self.actions.smooth    = action('smooth',    'Smooth',        self.toggleSubdivision, toggle=True)
-        self.actions.wireframe = action('wireframe', 'Wireframe',     self.toggleSolid, toggle=True)
+        self.actions.smooth    = action('smooth',    self.getLanguageString('Smooth'),        self.toggleSubdivision, toggle=True)
+        self.actions.wireframe = action('wireframe', self.getLanguageString('Wireframe'),     self.toggleSolid, toggle=True)
 
 
         # 4 - Symmetry toolbar
         toolbar = self.sym_toolbar = mh.addToolBar("Symmetry")
 
-        self.actions.symmetryR = action('symm1', 'Symmmetry R>L',     self.symmetryLeft)
-        self.actions.symmetryL = action('symm2', 'Symmmetry L>R',     self.symmetryRight)
-        self.actions.symmetry  = action('symm',  'Symmmetry',         self.symmetry, toggle=True)
+        self.actions.symmetryR = action('symm1', self.getLanguageString('Symmmetry R>L'),     self.symmetryLeft)
+        self.actions.symmetryL = action('symm2', self.getLanguageString('Symmmetry L>R'),     self.symmetryRight)
+        self.actions.symmetry  = action('symm',  self.getLanguageString('Symmmetry'),         self.symmetry, toggle=True)
 
 
         # 5 - Camera toolbar
         toolbar = self.camera_toolbar = mh.addToolBar("Camera")
 
-        self.actions.front     = action('front',     'Front view',    self.frontView)
-        self.actions.back      = action('back',      'Back view',     self.backView)
-        self.actions.right     = action('right',     'Right view',    self.rightView)
-        self.actions.left      = action('left',      'Left view',     self.leftView)
-        self.actions.top       = action('top',       'Top view',      self.topView)
-        self.actions.bottom    = action('bottom',    'Bottom view',   self.bottomView)
-        self.actions.resetCam  = action('resetCam',  'Reset camera',  self.resetView)
+        self.actions.front     = action('front',     self.getLanguageString('Front view'),    self.frontView)
+        self.actions.back      = action('back',      self.getLanguageString('Back view'),     self.backView)
+        self.actions.right     = action('right',     self.getLanguageString('Right view'),    self.rightView)
+        self.actions.left      = action('left',      self.getLanguageString('Left view'),     self.leftView)
+        self.actions.top       = action('top',       self.getLanguageString('Top view'),      self.topView)
+        self.actions.bottom    = action('bottom',    self.getLanguageString('Bottom view'),   self.bottomView)
+        self.actions.resetCam  = action('resetCam',  self.getLanguageString('Reset camera'),  self.resetView)
 
 
         # 6 - Other toolbar
         toolbar = self.other_toolbar = mh.addToolBar("Other")
 
-        self.actions.grab      = action('grab',      'Grab screen',   self.grabScreen)
-        self.actions.help      = action('help',      'Help',          self.goToHelp)
+        self.actions.grab      = action('grab',      self.getLanguageString('Grab screen'),   self.grabScreen)
+        self.actions.help      = action('help',      self.getLanguageString('Help'),          self.goToHelp)
 
 
     def createShortcuts(self):

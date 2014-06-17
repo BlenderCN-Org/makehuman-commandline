@@ -47,6 +47,7 @@ import getpath
 from core import G
 import log
 from collections import OrderedDict
+import language
 
 class ModifierTaskView(gui3d.TaskView):
     def __init__(self, category, name, label=None, saveName=None, cameraView=None):
@@ -54,6 +55,10 @@ class ModifierTaskView(gui3d.TaskView):
             label = name.capitalize()
         if saveName is None:
             saveName = name
+        # JH: Hack to get around issue #396 for 1.0.1 release. For 1.1 translation strings should be updated.
+        if label == "Arms and legs":
+            label = "Arms and Legs"
+
         super(ModifierTaskView, self).__init__(category, name, label=label)
 
         self.saveName = saveName
@@ -72,7 +77,7 @@ class ModifierTaskView(gui3d.TaskView):
     def addSlider(self, sliderCategory, slider):
         # Get category groupbox
         categoryName = sliderCategory.capitalize()
-        if categoryName not in [unicode(g.title()) for g in self.groupBoxes.values()]:
+        if categoryName not in self.groupBoxes:
             # Create box
             box = self.groupBox.addWidget(gui.GroupBox(categoryName))
             self.groupBoxes[categoryName] = box

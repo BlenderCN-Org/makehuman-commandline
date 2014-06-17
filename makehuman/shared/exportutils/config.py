@@ -55,11 +55,9 @@ class Config(object):
         self.feetOnGround       = False
         self.scale              = 1.0
         self.unit               = "dm"
-        self.offset             = np.array((0.0, 0.0, 0.0))
 
         self.useNormals         = False
         self.useRelPaths        = True
-        self.cage               = False
         self.texFolder          = None
         self.customPrefix       = ""
         self.human              = None
@@ -72,12 +70,13 @@ class Config(object):
         return self
 
 
-    def setOffset(self, human):
-        from armature.utils import calcJointPos
+    @property
+    def offset(self):
         if self.feetOnGround:
-            self.offset = np.array(calcJointPos(human.meshData, 'ground'))
+            yOffset = -self.scale * self.human.getJointPosition('ground')[1]
+            return np.asarray([0.0, yOffset, 0.0], dtype=np.float32)
         else:
-            self.offset = np.array((0,0,0), float)
+            return np.zeros(3, dtype=np.float32)
 
 
     @property
@@ -100,7 +99,7 @@ class Config(object):
         """
         Get the proxy list from the current state of the set human object.
         Proxy list will contain all proxy items such as proxy mesh and clothes,
-        hair, eyes, genitals and cages.
+        hair, eyes, and genitals.
         """
         if not self.human:
             return {}
@@ -114,15 +113,6 @@ class Config(object):
         if self.human.proxy:
             pxy = self.human.proxy
             name = self.goodName(pxy.name)
-            proxies[name] = pxy
-
-        # TODO deprecated? is this going to be revived?
-        if self.cage:
-            import proxy
-            human = G.app.selectedHuman
-            filepath = getSysDataPath("cages/cage/cage.mhclo")
-            pxy = proxy.loadProxy(human, filepath, type="Cage")
-            pxy.update(human.meshData)
             proxies[name] = pxy
 
         return proxies

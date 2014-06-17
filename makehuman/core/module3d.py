@@ -129,18 +129,25 @@ class Object3D(object):
 
         self.__object = None
 
-    def clone(self, scale=1.0, filterMaskedVerts=False):
+    def clone(self, scale=1.0, filterMaskedVerts=False):    # TODO it's also possible to add offset to the parameters
         """
         Create a clone of this mesh, with adapted scale.
         If filterVerts is True, all vertices that are not required (do not
         belong to any visible face) are removed and vertex mapping is added to
         cloned object (see filterMaskedVerts()). For a face mapping, the
         facemask of the original mesh can be used.
+
+        By default cloning a mesh links it to the object of its parent, remove
+        the link by setting other.object to None before attaching it to a new
+        object.
         """
+        if self.getFaceCount(excludeMaskedFaces=filterMaskedVerts) == 0:
+            raise RuntimeError("Error cloning mesh %s. Cannot clone a mesh with 0 (unmasked) faces!", self.name)
+
         other = type(self)(self.name, self.vertsPerPrimitive)
 
         for prop in ['cameraMode', 'visibility', 'pickable', 
-                     'calculateTangents', 'priority', 'MAX_FACES']:
+                     'calculateTangents', 'priority', 'MAX_FACES', 'object']:
             setattr(other, prop, getattr(self, prop))
 
         for fg in self.faceGroups:
@@ -166,6 +173,82 @@ class Object3D(object):
 
         return other
 
+    @property
+    def parent_map(self):
+        """
+        Maps vertex indices from this mesh to its original parent mesh 
+        (self.parent). This happens recursively to the topmost parent.
+
+        Forward vertex mapping (self -> self.parent):
+        parent_map[idx] = mIdx: self.coord[idx] -> self.parent.coord[mIdx]
+
+        Will return a (n, self.MAX_FACES) array if this chain of meshes
+        contains a subdivided mesh.
+
+        Note that vertex maps only support one subdivision in a chain of mesh
+        to parent meshes.
+        """
+        if not hasattr(self, 'parent') or not self.parent:
+            return None
+
+        if not hasattr(self, '_parent_map'):
+            mapping = np.arange(self.getVertexCount(), dtype=np.uint32)
+        else:
+            mapping = self._parent_map
+
+        # Traverse to parent
+        pmap = self.parent.parent_map
+        if pmap is None:
+            return mapping
+        else:
+            # Combine mappings to topmost parent
+            return pmap[mapping]
+
+    @property
+    def parent_map_weights(self):
+        return np.ones(self.getVertexCount(), dtype=np.float32)
+
+    @property
+    def inverse_parent_map(self):
+        """
+        Maps vertex indices from original parent mesh (self.parent) to 
+        this mesh (-1 if vertex is removed in this mesh).
+        This happens recursively to the topmost parent.
+
+        Reverse vertex mapping:
+        inverse_parent_map[idx] = mIdx: self.parent.coord[idx] -> self.coord[mIdx]
+
+        Will return a (n, 1+self.MAX_FACES*2) array if this chain of meshes
+        contains a subdivided mesh.
+
+        Note that vertex maps only support one subdivision in a chain of mesh
+        to parent meshes.
+        """
+        # TODO will require nxn matrix if subdivided (catmull-clark module)
+
+        if not hasattr(self, 'parent') or not self.parent:
+            return None
+
+        if not hasattr(self, '_inverse_parent_map'):
+            mapping = np.arange(self.parent.getVertexCount(), dtype=np.int32)
+        else:
+            mapping = self._inverse_parent_map
+
+        # Traverse to parent
+        pmap = self.parent.inverse_parent_map
+        if pmap is None:
+            return mapping
+        else:
+            # Combine mappings to topmost parent
+            if len(mapping.shape) > 1:
+                shape = (len(pmap), mapping.shape[1])
+            else:
+                shape = len(pmap)
+            result = - np.ones(shape, dtype=np.int32)
+            idx = np.where(pmap > -1)
+            result[idx] = mapping[ pmap[idx] ]
+            return result
+
     def filterMaskedVerts(self, other, update=True):
         """
         Set the vertices, faces and vertex attributes of other object to the
@@ -178,20 +261,21 @@ class Object3D(object):
 
         other.parent is set to the original mesh.
         """
+        # TODO or build a chain of parents?
         if hasattr(self, 'parent') and self.parent:
             other.parent = self.parent
         else:
             other.parent = self
 
         # Forward vertex mapping:
-        # parent_map[idx] = mIdx: other.coord[idx] -> self.coord[mIdx]
-        other.parent_map = np.unique(self.getVerticesForFaceMask(self.face_mask))
+        # _parent_map[idx] = mIdx: other.coord[idx] -> self.coord[mIdx]
+        other._parent_map = np.unique(self.getVerticesForFaceMask(self.face_mask))
 
         # Reverse vertex mapping:
-        # inverse_parent_map[idx] = mIdx: self.coord[idx] -> other.coord[mIdx]
-        other.inverse_parent_map = - np.ones(self.getVertexCount(), dtype=np.int32)
-        other.inverse_parent_map[other.parent_map] = np.arange(self.getVertexCount(), dtype=np.int32)
-        #other.inverse_parent_map = np.ma.masked_less(other.inverse_parent_map, 0)  # TODO might be useful
+        # _inverse_parent_map[idx] = mIdx: self.coord[idx] -> other.coord[mIdx]
+        other._inverse_parent_map = - np.ones(self.getVertexCount(), dtype=np.int32)
+        other._inverse_parent_map[other.parent_map] = np.arange(self.getVertexCount(), dtype=np.int32)
+        #other._inverse_parent_map = np.ma.masked_less(other._inverse_parent_map, 0)  # TODO might be useful
 
         other.setCoords(self.coord[other.parent_map])
         other.setColor(self.color[other.parent_map])
@@ -199,7 +283,7 @@ class Object3D(object):
         # Filter out and remap masked faces
         fvert = self.fvert[self.face_mask]
         for i in xrange(self.vertsPerPrimitive):
-            fvert[:,i] = other.inverse_parent_map[fvert[:,i]]
+            fvert[:,i] = other._inverse_parent_map[fvert[:,i]]
 
         # Filter out and remap unused UVs
         fuvs = self.fuvs[self.face_mask]
@@ -434,8 +518,10 @@ class Object3D(object):
 
         self.markCoords(None, True, True, True)
 
-    def getVertexCount(self):
+    def getVertexCount(self, excludeMaskedVerts=False):
         #return len(self.vface)
+        if excludeMaskedVerts:
+            return np.count_nonzero(self.getVertexMaskForFaceMask(self.getFaceMask()))
         return len(self.coord)
 
     def getCoords(self, indices = None):
@@ -549,7 +635,9 @@ class Object3D(object):
     def hasUVs(self):
         return self.has_uv
 
-    def getFaceCount(self):
+    def getFaceCount(self, excludeMaskedFaces=False):
+        if excludeMaskedFaces:
+            return np.count_nonzero(self.getFaceMask())
         return len(self.fvert)
 
     def getFaceVerts(self, indices = None):
@@ -580,21 +668,110 @@ class Object3D(object):
         return self._inverse_vmap
 
     def _update_faces(self):
+        # Construct vface: arrange face indices for same v_idx in different columns
+        # Every row in the vface matrix contains a variable number of valid columns
+        # (the number of valid columns for each row is stored in the nfaces array)
         map_ = np.argsort(self.fvert.flat)
         vi = self.fvert.flat[map_]
+        # Map v_idx entries to row numbers of fvert (face_idx)
         fi = np.mgrid[:self.fvert.shape[0],:self.fvert.shape[1]][0].flat[map_].astype(np.uint32)
         del map_
         ix, first = np.unique(vi, return_index=True)
-        n = first[1:] - first[:-1]
-        n = np.hstack((n, np.array([len(vi) - first[-1]])))
+        n = first[1:] - first[:-1]    # entry-skip count, or the number of occurences of every idx
+        n_last = len(vi) - first[-1]  # Number of occurences of last idx
+        n = np.hstack((n, np.array([n_last])))  # Append last to complete n
+
+        # Store number of valid columns per line in vface
         self.nfaces[ix] = n.astype(np.uint8)
         try:
             for i in xrange(len(ix)):
+                # Unfortunately these type of slices require a python loop
                 self.vface[ix[i],:n[i]] = fi[first[i]:][:n[i]]
         except Exception as e:
             import log
             log.error("Failed to index faces of mesh %s, you are probably loading a mesh with mixed nb of verts per face (do not mix tris and quads). Or your mesh has too many faces attached to one vertex (the maximum is %s-poles). In the second case, either increase MAX_FACES for this mesh, or improve the mesh topology. Original error message: (%s) %s", self.name, self.MAX_FACES, type(e), format(str(e)))
             raise RuntimeError('Incompatible mesh topology.')
+
+    def getWeights(self, parentWeights):
+        """
+        Map armature weights mapped to the root parent (original mesh) to this
+        child mesh. Returns parentWeights unaltered if this mesh has no parent.
+        If this is a proxy mesh, parentWeights should be the weights mapped 
+        through the proxy.getWeights() method first.
+        """
+        # TODO this would heavily benefit from numpy optimization
+
+        vmap = self.inverse_parent_map
+        vwmap = self.parent_map_weights
+
+        from collections import OrderedDict
+        weights = OrderedDict()
+        if not parentWeights:
+            return weights
+
+        # Zip vertex indices and weights
+        zippedWeights = {}
+        for (key, val) in parentWeights.items():
+            indxs, wghts = val
+            zippedWeights[key] = zip(indxs, wghts)
+        parentWeights = zippedWeights
+
+        def _fixVertexGroup(vgroup):
+            """
+            Merge duplicate weighings to the same vertex by reducing it to only
+            one entry with summed weights.
+            """
+            fixedVGroup = []
+            vgroup.sort()
+            pv = -1
+            while vgroup:
+                (pv0, wt0) = vgroup.pop()
+                if pv0 == pv:
+                    wt += wt0
+                else:
+                    if pv >= 0 and wt > 1e-4:
+                        fixedVGroup.append((pv, wt))
+                    (pv, wt) = (pv0, wt0)
+            if pv >= 0 and wt > 1e-4:
+                fixedVGroup.append((pv, wt))
+            return fixedVGroup
+
+        for key in parentWeights.keys():
+            vgroup = []
+            empty = True
+            for (v,wt) in parentWeights[key]:
+                mvs = vmap[v]
+                if isinstance(mvs, (int, np.int32)):
+                    mvs = [mvs]
+                for mv in mvs:
+                    w = vwmap[mv]
+                    if mv > -1:
+                        vgroup.append((mv, w * wt))
+                        empty = False
+            if not empty:
+                vgroup = _fixVertexGroup(vgroup)
+                weights[key] = vgroup
+
+        # Unzip and normalize weights (and put them in np format)
+        # TODO it would be a good idea to impose a max limit on nb of weights per vertex here
+        boneWeights = {}
+        wtot = np.zeros(self.getVertexCount(), np.float32)
+        for vgroup in weights.values():
+            for vn,w in vgroup:
+                wtot[vn] += w
+
+        for bname,vgroup in weights.items():
+            weights = np.zeros(len(vgroup), np.float32)
+            verts = []
+            n = 0
+            for vn,w in vgroup:
+                verts.append(vn)
+                weights[n] = w/wtot[vn]
+                n += 1
+            boneWeights[bname] = (verts, weights)
+
+        return boneWeights
+
 
     def updateIndexBuffer(self):
         self.updateIndexBufferVerts()
