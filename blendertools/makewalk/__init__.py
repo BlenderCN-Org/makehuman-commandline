@@ -40,8 +40,8 @@ Alternatively, run the script in the script editor (Alt-P), and access from UI p
 bl_info = {
     "name": "MakeWalk",
     "author": "Thomas Larsson",
-    "version": (1,0,1),
-    "blender": (2,7,1),
+    "version": (1,1,0),
+    "blender": (2,7,2),
     "location": "View3D > Tools > MakeWalk",
     "description": "Mocap tool for MakeHuman character",
     "warning": "",
@@ -110,16 +110,16 @@ class MainPanel(bpy.types.Panel):
         layout = self.layout
         ob = context.object
         scn = context.scene
-        if ob and ob.type == 'ARMATURE':
-            layout.operator("mcp.load_and_retarget")
-            layout.separator()
-            layout.prop(scn, "McpStartFrame")
-            layout.prop(scn, "McpEndFrame")
-            layout.separator()
-            layout.prop(scn, "McpShowDetailSteps")
-            if scn.McpShowDetailSteps:
-                ins = inset(layout)
-                ins.operator("mcp.load_bvh")
+        layout.operator("mcp.load_and_retarget")
+        layout.separator()
+        layout.prop(scn, "McpStartFrame")
+        layout.prop(scn, "McpEndFrame")
+        layout.separator()
+        layout.prop(scn, "McpShowDetailSteps")
+        if scn.McpShowDetailSteps:
+            ins = inset(layout)
+            ins.operator("mcp.load_bvh")
+            if ob and ob.type == 'ARMATURE':
                 ins.operator("mcp.rename_bvh")
                 ins.operator("mcp.load_and_rename_bvh")
 
@@ -129,12 +129,6 @@ class MainPanel(bpy.types.Panel):
                 ins.separator()
                 ins.operator("mcp.simplify_fcurves")
                 ins.operator("mcp.rescale_fcurves")
-
-        else:
-            layout.operator("mcp.load_bvh")
-            layout.separator()
-            layout.prop(scn, "McpStartFrame")
-            layout.prop(scn, "McpEndFrame")
 
 ########################################################################
 #
@@ -415,23 +409,26 @@ class MhxTargetBonesPanel(bpy.types.Panel):
         layout.separator()
 
         if scn.McpTargetRig:
-            from .target import getTargetInfo
+            from .target import getTargetInfo, TargetBoneNames, findTargetKeys
 
             (bones, ikBones, tpose) = getTargetInfo(scn.McpTargetRig)
 
             layout.label("FK bones")
             box = layout.box()
-            for boneText in target.TargetBoneNames:
+            for boneText in TargetBoneNames:
                 if not boneText:
                     box.separator()
                     continue
                 (mhx, text) = boneText
-                bone = target.findTargetKey(mhx, bones)
-                row = box.row()
-                row.label(text)
-                if bone:
-                    row.label(bone)
+                bnames = findTargetKeys(mhx, bones)
+                if bnames:
+                    for bname in bnames:
+                        row = box.row()
+                        row.label(text)
+                        row.label(bname)
                 else:
+                    row = box.row()
+                    row.label(text)
                     row.label("-")
 
             if ikBones:
@@ -488,8 +485,6 @@ class UtilityPanel(bpy.types.Panel):
         layout.prop(scn, "McpShowPosing")
         if scn.McpShowPosing:
             ins = inset(layout)
-            if not rig.McpTPoseDefined:
-                ins.prop(scn, "McpMakeHumanTPose")
             ins.operator("mcp.set_t_pose")
             ins.separator()
             ins.operator("mcp.define_t_pose")

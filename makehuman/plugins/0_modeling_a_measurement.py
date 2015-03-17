@@ -10,7 +10,7 @@
 
 **Authors:**           Marc Flerackers
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -74,8 +74,8 @@ class MeasureTaskView(guimodifier.ModifierTaskView):
         self.uk = self.braBox.addWidget(gui.TextView('UK: '))
         '''
 
-    def addSlider(self, sliderCategory, slider):
-        super(MeasureTaskView, self).addSlider(sliderCategory, slider)
+    def addSlider(self, sliderCategory, slider, enabledCondition):
+        super(MeasureTaskView, self).addSlider(sliderCategory, slider, enabledCondition)
 
         slider.valueConverter = MeasurementValueConverter(self, slider.modifier)
 
@@ -90,7 +90,6 @@ class MeasureTaskView(guimodifier.ModifierTaskView):
         @slider.mhEvent
         def onChange(event):
             self.syncGUIStats()
-        self.sliders.append(slider)
 
     def _createMeasureMesh(self):
         self.measureMesh = module3d.Object3D('measure', 2)
@@ -338,7 +337,11 @@ class Ruler:
         self.Measures['measure/measure-calf-decrease|increase'] = [11339,11336,11353,11351,11350,13008,11349,11348,11345,11337,11344,11346,11347,11352,11342,11343,11340,11341,11338,11339]
 
         self.Measures['measure/measure-ankle-decrease|increase'] = [11460,11464,11458,11459,11419,11418,12958,12965,12960,12963,12961,12962,12964,12927,13028,12957,11463,11461,11457,11460]
+        self.Measures['measure/measure-kneecirc-decrease|increase'] = [11223,11230,11232,11233,11238,11228,11229,11226,11227,11224,11225,11221,11222,11239,11237,11236,13002,11235,11234,11223]
 
+
+
+   
         self._validate()
 
     def _validate(self):

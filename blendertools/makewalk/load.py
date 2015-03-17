@@ -23,7 +23,7 @@
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      https://bitbucket.org/MakeHuman/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2014
+# Script copyright (C) MakeHuman Team 2001-2015
 # Coding Standards:    See http://www.makehuman.org/node/165
 
 
@@ -465,8 +465,13 @@ def deleteSourceRig(context, rig, prefix):
 def rescaleRig(scn, trgRig, srcRig):
     if not scn.McpAutoScale:
         return
-    upleg = getTrgBone('thigh.L', trgRig)
-    trgScale = upleg.length
+    if isMhOfficialRig(trgRig):
+        upleg1 = trgRig.data.bones["upperleg01.L"]
+        upleg2 = trgRig.data.bones["upperleg02.L"]
+        trgScale = upleg1.length + upleg2.length
+    else:
+        upleg = getTrgBone('thigh.L', trgRig)
+        trgScale = upleg.length
     srcScale = srcRig.data.bones['thigh.L'].length
     scale = trgScale/srcScale
     print("Rescale %s with factor %f" % (srcRig.name, scale))

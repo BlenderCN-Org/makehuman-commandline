@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/external_tools_license.html)
 
@@ -219,7 +219,7 @@ def loadHuman(context):
     ob.name = "Human"
     ob.MhHuman = True
     if helpers:
-        autoVertexGroups(ob, 'Helpers', 'Tights')
+        autoVertexGroups(ob, 'Helpers', 'Default')
     else:
         autoVertexGroups(ob, 'Body', None)
     clearSelection()
@@ -564,7 +564,6 @@ def cornerWeights(pv, v0, v1, v2, hum, clo):
 #
 
 def midWeights(pv, bindex, v0, v1, v2, hum, clo):
-    print("Mid", pv.index, bindex)
     pv.select = True
     if isInGroup(v0, bindex):
         v0.select = True
@@ -580,7 +579,6 @@ def midWeights(pv, bindex, v0, v1, v2, hum, clo):
         v1.select = True
         v2.select = True
         return (w0, w1, w2)
-    print("  Failed mid")
     return cornerWeights(pv, v0, v1, v2, hum, clo)
 
 
@@ -680,7 +678,7 @@ def writeClothes(context, hum, clo, data, matfile):
         elif len(verts) == 8:   # Rigid fit
             fp.write("%5d %5d %5d %5d %5d %5d %5d %5d %.5f %.5f %.5f %.5f %.5f %.5f %.5f %.5f\n" % tuple(verts+wts))
         else:
-            halt
+            raise RuntimeError("Bug: Wrong number of verts %s" % verts)
 
     fp.write('\n')
     printDeleteVerts(fp, hum)
@@ -836,6 +834,7 @@ def writeStuff(fp, clo, context, matfile):
     scn = context.scene
     fp.write("z_depth %d\n" % scn.MCZDepth)
 
+    '''
     for mod in clo.modifiers:
         if mod.type == 'SHRINKWRAP':
             fp.write("shrinkwrap %.3f\n" % (mod.offset))
@@ -843,6 +842,7 @@ def writeStuff(fp, clo, context, matfile):
             fp.write("subsurf %d %d\n" % (mod.levels, mod.render_levels))
         elif mod.type == 'SOLIDIFY':
             fp.write("solidify %.3f %.3f\n" % (mod.thickness, mod.offset))
+    '''
 
     if matfile:
         fp.write("material %s\n" % matfile)
@@ -1121,9 +1121,14 @@ def checkNoTriangles(scn, ob):
         strayVerts[vn] = True
         nPoles[vn] = 0
 
+    nfv = len(ob.data.polygons[0].vertices)
+    if nfv not in [3,4]:
+        msg = "Object %s\ncan not be used for clothes creation\nbecause it has a face with %d vertices.\n" % (ob.name, nfv)
+        raise MHError(msg)
+
     for f in ob.data.polygons:
-        if len(f.vertices) != 4:
-            msg = "Object %s\ncan not be used for clothes creation\nbecause it has non-quad faces.\n" % (ob.name)
+        if len(f.vertices) != nfv:
+            msg = "Object %s\ncan not be used for clothes creation\nbecause it has both quads and tris.\n" % (ob.name)
             raise MHError(msg)
         for vn in f.vertices:
             strayVerts[vn] = False
@@ -1194,6 +1199,14 @@ def checkObjectOK(ob, context, isClothing):
         word = "parent"
         ob.parent = None
 
+    word = rightVGroupOnLeftSide(ob, -1, "LEFT", [".L", "_L"])
+    if word:
+        err = True
+
+    word = rightVGroupOnLeftSide(ob, 1, "RIGHT", [".R", "_R"])
+    if word:
+        err = True
+
     if isClothing:
         try:
             ob.data.uv_layers[scn.MCTextureLayer]
@@ -1225,6 +1238,21 @@ def checkObjectOK(ob, context, isClothing):
     context.scene.objects.active = old
     return
 
+
+def rightVGroupOnLeftSide(ob, sign, gname, suffixes):
+    for vgrp in ob.vertex_groups:
+        uname = vgrp.name.upper()
+        if (uname == gname or uname[-2:] in suffixes):
+            gn = vgrp.index
+            for v in ob.data.vertices:
+                if v.co[0]*sign > 1.0:  # 1 dm into wrong territory. Should maybe be smaller.
+                    for g in v.groups:
+                        if g.group == gn:
+                            print(ob, sign, gname, suffixes)
+                            print(vgrp.name, v.index, v.co)
+                            return ("%s vertex on wrong side in vertex group %s" % (gname, vgrp.name))
+    return ""
+
 #
 #   checkSingleVertexGroups(clo, scn):
 #
@@ -1244,9 +1272,15 @@ def checkSingleVertexGroups(clo, scn):
                         else:
                             print("  ", vg.name)
             if n != 1:
+                vn = v.index
+                scn.objects.active = clo
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.select_all(action='DESELECT')
+                bpy.ops.object.mode_set(mode='OBJECT')
+                v = clo.data.vertices[vn]
                 v.select = True
-                raise MHError("Vertex %d in %s belongs to %d groups. Must be exactly one" % (v.index, clo.name, n))
-    return
+                bpy.ops.object.mode_set(mode='EDIT')
+                raise MHError("Vertex %d in %s belongs to %d groups. Must be exactly one" % (vn, clo.name, n))
 
 
 def writeFaces(clo, fp):
@@ -1256,7 +1290,7 @@ def writeFaces(clo, fp):
         for v in f.vertices:
             fp.write(" %d" % (v+1))
         fp.write("\n")
-    return
+
 
 def writeVertexGroups(clo, fp):
     for vg in clo.vertex_groups:
@@ -1265,7 +1299,6 @@ def writeVertexGroups(clo, fp):
             for g in v.groups:
                 if g.group == vg.index and g.weight > 1e-4:
                     fp.write(" %d %.4g \n" % (v.index, g.weight))
-    return
 
 #
 #    writePrio(data, prio, pad, fp):
@@ -1490,7 +1523,7 @@ def deleteHelpers(context):
 #   autoVertexGroups(ob):
 #
 
-def autoVertexGroupsIfNecessary(ob, type='Selected', htype='Tights'):
+def autoVertexGroupsIfNecessary(ob, type='Selected', htype='Default'):
     if len(ob.vertex_groups) == 0:
         print("Found no vertex groups for %s." % ob)
         autoVertexGroups(ob, type, htype)
@@ -1541,8 +1574,7 @@ def getHumanVerts(me, type, htype):
         verts = getHelperVerts(me, 'All')
         addBodyVerts(me, verts)
     else:
-        print(type, htype)
-        halt
+        raise RuntimeError("Bug getHumanVerts %s %s" % (type, htype))
     return verts
 
 
@@ -1557,6 +1589,10 @@ def getHelperVerts(me, htype):
         checkEnoughVerts(me, htype, vnums[htype][0])
         for vn in range(vnums[htype][0], vnums[htype][1]):
             verts[vn] = me.vertices[vn]
+    elif htype == 'Default':
+        checkEnoughVerts(me, htype, vnums["Tights"][0])
+        for vn in range(vnums["Tights"][0], vnums["Skirt"][1]):
+            verts[vn] = me.vertices[vn]
     elif htype == 'Coat':
         checkEnoughVerts(me, htype, vnums["Tights"][0])
         zmax = -1e6
@@ -1568,7 +1604,7 @@ def getHelperVerts(me, htype):
             verts[vn] = me.vertices[vn]
         for vn in range(vnums["Tights"][0], vnums["Tights"][1]):
             zn = me.vertices[vn].co[2]
-            if zn > zmax:
+            if zn > zmax or vn in theSettings.bottomOfCoatTop:
                 verts[vn] = me.vertices[vn]
     else:
         raise MHError("Unknown helper type %s" % htype)
@@ -1950,7 +1986,7 @@ def init():
 
     bpy.types.Scene.MCShowSettings = BoolProperty(name = "Show Settings", default=False)
     bpy.types.Scene.MCShowUtils = BoolProperty(name = "Show Utilities", default=False)
-    bpy.types.Scene.MCShowSelect = BoolProperty(name = "Show Selection", default=False)
+    bpy.types.Scene.MCShowSelect = BoolProperty(name = "Show Selection (Human Only)", default=False)
     bpy.types.Scene.MCShowMaterials = BoolProperty(name = "Show Materials", default=False)
     bpy.types.Scene.MCShowAdvanced = BoolProperty(name = "Show Advanced", default=False)
     bpy.types.Scene.MCShowUVProject = BoolProperty(name = "Show UV Projection", default=False)

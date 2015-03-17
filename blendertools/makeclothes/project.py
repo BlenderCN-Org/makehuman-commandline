@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/external_tools_license.html)
 
@@ -40,7 +40,7 @@ Abstract
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      https://bitbucket.org/MakeHuman/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2014
+# Script copyright (C) MakeHuman Team 2001-2015
 # Coding Standards:    See http://www.makehuman.org/node/165
 #
 # Abstract
@@ -455,9 +455,7 @@ def getSingleUvLoc(vn, table):
         try:
             return buvs[0]*wts[0] + buvs[1]*wts[1] + buvs[2]*wts[2]
         except:
-            for n in range(3):
-                print(buvs[n], wts[n])
-            halt
+            raise RuntimeError("Bug getSingleUvLoc: %s" % [(buvs[n], wts[n]) for n in range(3)])
 
 
 def getUvLoc(vn, f, uvface):
@@ -554,7 +552,7 @@ def autoSeams(context):
             pf.select = True
             for pe in edges:
                 pe.use_seam = not pe.use_seam
-            halt
+            raise RuntimeError("Bug: Three seams")
 
 def otherEnd(e, v, ob):
     v1 = ob.data.vertices[e.vertices[0]]
@@ -571,7 +569,7 @@ def findEdge(verts, vertEdges):
     print(verts)
     print(vertEdges[vn1])
     print(vertEdges[vn2])
-    halt
+    raise RuntimeError("Cannot find edge")
 
 
 def markEdges(pv0, pv1, pob, pVertEdges, taken, depth):

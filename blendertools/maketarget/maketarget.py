@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/external_tools_license.html)
 
@@ -494,8 +494,6 @@ def loadStatueMinusPose(context):
                 for g in v.groups:
                     print("\nGrp %d %f %f" % (g.group, g.weight, relMats[g.group].determinant()))
                     print("Rel", relMats[g.group])
-
-                #halt
 
     #scn.objects.unlink(statue)
     scn.objects.unlink(posed)
@@ -1234,7 +1232,7 @@ def snapWaist(context):
 
     nVerts = len(settings.skirtWaist)
     if len(settings.tightsWaist) != nVerts:
-        halt
+        raise RuntimeError("snapWaist: %d %d" % (len(settings.tightsWaist), nVerts))
     bpy.ops.object.mode_set(mode='OBJECT')
     skey = ob.data.shape_keys.key_blocks[-1]
     verts = skey.data

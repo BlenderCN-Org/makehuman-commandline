@@ -10,7 +10,7 @@
 
 **Authors:**           Marc Flerackers
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -212,6 +212,8 @@ class EventHandler(object):
                 method(event)
         except Exception, _:
             log.warning('Exception during event %s', eventType, exc_info=True)
+            if topLevel:
+                self.eventFailed()
         EventHandler._depth -= 1
         if topLevel:
             self._logger.debug('callEvent: done')
@@ -219,6 +221,11 @@ class EventHandler(object):
                 G.app.redraw()
             return True
         return False
+
+    def eventFailed(self):
+        # Reset progress
+        if G.app:
+            G.app.progress(1)
 
     def attachEvent(self, eventName, eventMethod):
         setattr(self, eventName, eventMethod)

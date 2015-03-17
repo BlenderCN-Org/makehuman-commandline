@@ -10,7 +10,7 @@
 
 **Authors:**           Marc Flerackers, Glynn Clements, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -269,7 +269,12 @@ class Modifier(object):
         for target, old, new in zip(self.targets, old_detail, new_detail):
             if new == old:
                 continue
-            algos3d.loadTranslationTarget(self.human.meshData, target[0], new - old, None, 0, 0)
+            if self.human.isPosed():
+                # Apply target with pose transformation
+                animatedMesh = self.human
+            else:
+                animatedMesh = None
+            algos3d.loadTranslationTarget(self.human.meshData, target[0], new - old, None, 0, 0, animatedMesh=animatedMesh)
 
         if skipUpdate:
             # Used for dependency updates (avoid dependency loops and double updates to human)
@@ -325,7 +330,7 @@ class Modifier(object):
         """
         Retrieve the other modifiers of the same type on the human.
         """
-        return [m for m in self.human.getModiersByType(type(self)) if m != self]
+        return [m for m in self.human.getModifiersByType(type(self)) if m != self]
 
     def __str__(self):
         return "%s %s" % (type(self).__name__, self.fullName)

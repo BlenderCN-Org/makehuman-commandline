@@ -23,7 +23,7 @@
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      https://bitbucket.org/MakeHuman/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2014
+# Script copyright (C) MakeHuman Team 2001-2015
 # Coding Standards:    See http://www.makehuman.org/node/165
 
 
@@ -137,13 +137,15 @@ def guessTargetArmatureFromList(rig, bones, scn):
 
     if isMhxRig(rig):
         return "MHX"
+    elif isMhOfficialRig(rig):
+        return "MH-Official"
     elif isRigify(rig):
         return "Rigify"
     elif isMhx7Rig(rig):
         return "MH-alpha7"
     elif False:
         for name in _targetInfo.keys():
-            if name not in ["MHX", "Rigify", "MH-alpha7"]:
+            if name not in ["MHX", "MH-Official", "Rigify", "MH-alpha7"]:
                 (boneAssoc, _ikBones, _tpose) = _targetInfo[name]
                 if testTargetRig(name, rig, boneAssoc):
                     return name
@@ -165,14 +167,15 @@ def testTargetRig(name, rig, rigBones):
     return True
 
 #
-#   findTargetKey(mhx, list):
+#   findTargetKeys(mhx, list):
 #
 
-def findTargetKey(mhx, list):
+def findTargetKeys(mhx, list):
+    bones = []
     for (bone, mhx1) in list:
         if mhx1 == mhx:
-            return bone
-    return None
+            bones.append(bone)
+    return bones
 
 ###############################################################################
 #

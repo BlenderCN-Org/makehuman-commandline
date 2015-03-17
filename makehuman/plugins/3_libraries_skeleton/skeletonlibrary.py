@@ -10,7 +10,7 @@
 
 **Authors:**           Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -47,13 +47,13 @@ import filechooser as fc
 import skeleton
 import skeleton_drawing
 import animation
-import armature
-from armature.options import ArmatureOptions
 import getpath
 import material
 
 import numpy as np
 import os
+
+REF_RIG_PATH = getpath.getSysDataPath('rigs/default.json')
 
 #------------------------------------------------------------------------------------------
 #   class SkeletonAction
@@ -75,33 +75,6 @@ class SkeletonAction(gui3d.Action):
         return True
 
 
-def _getSkeleton(self):
-    # TODO this is a very tedious way op keeping the skeleton updated, better just to performantly update the skeleton joints after a slider is released
-
-    #log.debug("Get skeleton %s %s" % (self, self._skeleton))
-    if not self._skeleton:
-        return None
-    if self._skeleton.dirty:
-        log.debug("Rebuilding skeleton.")
-        # Rebuild skeleton (when human has changed)
-        # Loads new skeleton, creates new skeleton mesh and new animatedMesh object (with up-to-date rest coords)
-        self._skeleton._library.chooseSkeleton(self._skeleton.options)
-        # TODO have a more efficient way of adapting skeleton to new joint positions without re-reading rig files
-        # TODO Also, currently a tiny change in joints positions causes a new animatedMesh to be constructed, requiring all BVH motions to be reloaded (which is not necessary if the rig structure does not change). It should be enough to re-sync the rest coordinates in the animatedMesh and move the coord positions of the skeleton mesh.
-        self._skeleton.dirty = False
-    return self._skeleton
-
-
-def _getVertexWeights(self):
-    if not self.getSkeleton():
-        return None
-    if not self.animated:
-        return None
-
-    _, bodyWeights = self.animated.getMesh("base.obj")
-    return bodyWeights
-
-
 #------------------------------------------------------------------------------------------
 #   class SkeletonLibrary
 #------------------------------------------------------------------------------------------
@@ -110,9 +83,9 @@ class SkeletonLibrary(gui3d.TaskView):
 
     def __init__(self, category):
         gui3d.TaskView.__init__(self, category, 'Skeleton')
-        self.debugLib = None
-        self.amtOptions = ArmatureOptions()
         self.optionsSelector = None
+
+        self._skelFileCache = None
 
         self.systemRigs = mh.getSysDataPath('rigs')
         self.userRigs = os.path.join(mh.getPath(''), 'data', 'rigs')
@@ -122,18 +95,10 @@ class SkeletonLibrary(gui3d.TaskView):
         self.extension = "rig"
 
         self.human = gui3d.app.selectedHuman
-        self.human._skeleton = None
-        self.human.animated = None
-        # Attach getter to human to access the skeleton, that takes care of deferred
-        # updating when the skeleton should change
-        import types
-        self.human.getSkeleton = types.MethodType(_getSkeleton, self.human, self.human.__class__)
-        self.human.getVertexWeights = types.MethodType(_getVertexWeights, self.human, self.human.__class__)
+
+        self.referenceRig = None
 
         self.selectedRig = None
-        self.selectedBone = None
-
-        self.oldSmoothValue = False
 
         self.humanChanged = False   # Used for determining when joints need to be redrawn
 
@@ -175,17 +140,17 @@ class SkeletonLibrary(gui3d.TaskView):
         self.showJointsTggl.setSelected(True)
         '''
 
-        self.sysDataPath = mh.getSysDataPath('rigs')
-        self.homeDataPath = mh.getPath('data/rigs')
-        if not os.path.exists(self.homeDataPath):
-            os.makedirs(self.homeDataPath)
-        self.paths = [self.homeDataPath, self.sysDataPath]
+        self.sysDataPath = getpath.getSysDataPath('rigs')
+        self.userDataPath = getpath.getDataPath('rigs')
+        if not os.path.exists(self.userDataPath):
+            os.makedirs(self.userDataPath)
+        self.paths = [self.userDataPath, self.sysDataPath]
 
         #
         #   Preset box
         #
 
-        self.presetChooser = self.addRightWidget(fc.IconListFileChooser( \
+        self.filechooser = self.addRightWidget(fc.IconListFileChooser( \
                                                     self.paths,
                                                     'json',
                                                     'thumb',
@@ -193,81 +158,51 @@ class SkeletonLibrary(gui3d.TaskView):
                                                     notFoundImage = mh.getSysDataPath('notfound.thumb'), 
                                                     noneItem = True, 
                                                     doNotRecurse = True))
-        self.presetChooser.setIconSize(50,50)
+        self.filechooser.setIconSize(50,50)
 
-        @self.presetChooser.mhEvent
+        @self.filechooser.mhEvent
         def onFileSelected(filename):
-            self.rigPresetFileSelected(filename)
+            if filename:
+                msg = "Change skeleton"
+            else:
+                msg = "Clear skeleton"
+            gui3d.app.do(SkeletonAction(msg, self, self.selectedRig, filename))
+
+        self.filechooser.setFileLoadHandler(fc.TaggedFileLoader(self))
+        self.addLeftWidget(self.filechooser.createTagFilter())
 
         self.infoBox = self.addLeftWidget(gui.GroupBox('Rig info'))
         self.boneCountLbl = self.infoBox.addWidget(gui.TextView('Bones: '))
-        self.descrLbl = self.infoBox.addWidget(gui.TextView('Description: '))
+        self.infoBox.setSizePolicy(gui.QtGui.QSizePolicy.Preferred, gui.QtGui.QSizePolicy.Maximum)
+
+        descBox = self.addLeftWidget(gui.GroupBox('Description'))
+        self.descrLbl = descBox.addWidget(gui.TextView(''))
         self.descrLbl.setSizePolicy(gui.QtGui.QSizePolicy.Ignored, gui.QtGui.QSizePolicy.Preferred)
         self.descrLbl.setWordWrap(True)
 
-    def rigPresetFileSelected(self, filename, suppressAction = False):
-        self.selectedRig = filename
-
-        if not filename:
-            self.amtOptions.reset(self.optionsSelector, useMuscles=False)
-            self.descrLbl.setText("")
-            self.updateSkeleton(useOptions=False)
-            return
-
-        descr = self.amtOptions.loadPreset(filename, self.optionsSelector)   # TODO clean up this design
-        self.descrLbl.setTextFormat(["Description",": %s"], gui.getLanguageString(descr))
-        self.updateSkeleton(suppressAction = suppressAction)
-
-    def updateSkeleton(self, useOptions=True, suppressAction = False):
-        if self.human.getSkeleton():
-            oldSkelOptions = self.human.getSkeleton().options
-        else:
-            oldSkelOptions = None
-        self.amtOptions.fromSelector(self.optionsSelector)
-        if useOptions:
-            string = "Change skeleton"
-            options = self.amtOptions
-        else:
-            string = "Clear skeleton"
-            options = None
-
-        if suppressAction:
-            self.chooseSkeleton(options)
-        else:
-            gui3d.app.do(SkeletonAction(string, self, oldSkelOptions, options))
-
+        self.xray_mat = None
 
     def onShow(self, event):
         gui3d.TaskView.onShow(self, event)
         if gui3d.app.settings.get('cameraAutoZoom', True):
             gui3d.app.setGlobalCamera()
 
-        # Disable smoothing in skeleton library
-        self.oldSmoothValue = self.human.isSubdivided()
-        self.human.setSubdivided(False)
-
+        # Set X-ray material
+        if self.xray_mat is None:
+            self.xray_mat = material.fromFile(mh.getSysDataPath('materials/xray.mhmat'))
         self.oldHumanMat = self.human.material.clone()
         self.oldPxyMats = dict()
-        xray_mat = material.fromFile(mh.getSysDataPath('materials/xray.mhmat'))
-        self.human.material = xray_mat
+        self.human.material = self.xray_mat
         for pxy in self.human.getProxies(includeHumanProxy=False):
             obj = pxy.object
             self.oldPxyMats[pxy.uuid] = obj.material.clone()
-            obj.material = xray_mat
+            obj.material = self.xray_mat
 
-        #if not self.jointsObj:
-        #    self.drawJointHelpers()
-
-        #self.filechooser.refresh()
-
-        # Make sure skeleton is updated when human has changed
-        self.human.getSkeleton()
-
-        # Re-draw joints positions if human has changed
-        if self.humanChanged:
-            #self.drawJointHelpers()
-            self.humanChanged = False
-        mh.redraw()
+        # Make sure skeleton is updated if human has changed
+        if self.human.getSkeleton():
+            self.drawSkeleton(self.human.getSkeleton())
+            self.human.refreshPose()
+            mh.redraw()
 
 
     def onHide(self, event):
@@ -278,66 +213,72 @@ class SkeletonLibrary(gui3d.TaskView):
             if pxy.uuid in self.oldPxyMats:
                 pxy.object.material = self.oldPxyMats[pxy.uuid]
 
-        # Reset smooth setting
-        self.human.setSubdivided(self.oldSmoothValue)
         mh.redraw()
 
 
-    def chooseSkeleton(self, options):
-        """
-        Load skeleton from an options set.
-        """
-        log.debug("Loading skeleton with options %s", options)
+    def chooseSkeleton(self, filename):
+        log.debug("Loading skeleton from %s", filename)
+        self.selectedRig = filename
 
-        if not options:
-            # Unload current skeleton
-            self.human._skeleton = None
-            self.human.animated = None
+        if self.referenceRig is None:
+            log.message("Loading reference skeleton for weights remapping.")
+            self.referenceRig = skeleton.load(REF_RIG_PATH, self.human.meshData)
+
+        if not filename:
+            if self.human.getSkeleton():
+                # Unload current skeleton
+                self.human.setSkeleton(None)
+
             if self.skelObj:
                 # Remove old skeleton mesh
                 self.removeObject(self.skelObj)
+                self.human.removeBoundMesh(self.skelObj.name)
                 self.skelObj = None
                 self.skelMesh = None
             self.boneCountLbl.setTextFormat(["Bones",": %s"], "")
-            #self.selectedBone = None
-
-            if self.debugLib:
-                self.debugLib.reloadBoneExplorer()
+            self.descrLbl.setText("")
+            self.filechooser.selectItem(None)
             return
 
-        # Load skeleton definition from options
-        self.human._skeleton, boneWeights = skeleton.loadRig(options, self.human.meshData)
+        if getpath.isSamePath(filename, REF_RIG_PATH):
+            skel = self.referenceRig.clone()
+            vertexWeights = self.referenceRig.getVertexWeights()
+        else:
+            # Load skeleton definition from options
+            skel = skeleton.load(filename, self.human.meshData)
 
-        # Store a reference to the currently loaded rig
-        self.human._skeleton.options = options
-        self.human._skeleton.dirty = False   # Flag used for deferred updating
-        self.human._skeleton._library = self  # Temporary member, used for rebuilding skeleton
+            # Ensure vertex weights of skel are initialized
+            skel.autoBuildWeightReferences(self.referenceRig)  # correct weights references if only (pose) references were defined
+            vertexWeights = skel.getVertexWeights(self.referenceRig.getVertexWeights())
+            log.message("Skeleton %s has %s weights per vertex.", skel.name, vertexWeights.getMaxNumberVertexWeights())
 
-        #self.filechooser.selectItem(options)
+            # Remap bone orientation planes from reference rig
+            skel.addReferencePlanes(self.referenceRig)
 
-        # Created an AnimatedMesh object to manage the skeletal animation on the
-        # human mesh and optionally additional meshes.
-        # The animation manager object is accessible by other plugins via
-        # gui3d.app.currentHuman.animated.
-        self.human.animated = animation.AnimatedMesh(self.human.getSkeleton(), self.human.meshData, boneWeights)
+        # Update description
+        descr = skel.description
+        self.descrLbl.setText(descr)
+        self.boneCountLbl.setTextFormat(["Bones",": %s"], skel.getBoneCount())
 
-        # (Re-)draw the skeleton
-        skel = self.human.getSkeleton()
+        # (Re-)draw the skeleton (before setting skeleton on human so it is automatically re-posed)
         self.drawSkeleton(skel)
 
-        self.boneCountLbl.setTextFormat(["Bones",": %s"], self.human.getSkeleton().getBoneCount())
+        # Assign to human
+        self.human.setSkeleton(skel)
 
-        if self.debugLib:
-            self.debugLib.reloadBoneExplorer()
+        self.filechooser.selectItem(filename)
 
 
     def drawSkeleton(self, skel):
         if self.skelObj:
             # Remove old skeleton mesh
             self.removeObject(self.skelObj)
+            self.human.removeBoundMesh(self.skelObj.name)
             self.skelObj = None
             self.skelMesh = None
-            self.selectedBone = None
+
+        if not skel:
+            return
 
         # Create a mesh from the skeleton in rest pose
         skel.setToRestPose() # Make sure skeleton is in rest pose when constructing the skeleton mesh
@@ -353,12 +294,75 @@ class SkeletonLibrary(gui3d.TaskView):
         # The skeleton mesh is supposed to be constructed from the skeleton in rest and receives
         # rigid vertex-bone weights (for each vertex exactly one weight of 1 to one bone)
         mapping = skeleton_drawing.getVertBoneMapping(skel, self.skelMesh)
-        self.human.animated.addMesh(self.skelMesh, mapping)
+        self.human.addBoundMesh(self.skelMesh, mapping)
 
-        # Store a reference to the skeleton mesh object for other plugins
-        self.human._skeleton.object = self.skelObj
         mh.redraw()
 
+    def getTags(self, filename=None):
+        import filecache
+        def _getSkeletonTags(filename):
+            return skeleton.peekMetadata(filename)
+
+        if self._skelFileCache is None:
+            # Init cache
+            self.loadCache()
+            self._skelFileCache = filecache.updateFileCache(self.paths, 'mhmat', _getSkeletonTags,self._skelFileCache, False)
+
+        # TODO move most of this (duplicated) logic inside a class in filecache
+        result = set()
+
+        if filename:
+            fileId = getpath.canonicalPath(filename)
+            if fileId not in self._skelFileCache:
+                # Lazily update cache
+                self._skelFileCache = filecache.updateFileCache(self.paths + [os.path.dirname(fileId)], 'json', _getSkeletonTags,self._skelFileCache, False)
+
+            if fileId in self._skelFileCache:
+                metadata = self._skelFileCache[fileId]
+                if metadata is not None:
+                    mtime, name, desc, tags = metadata
+
+                    if mtime < os.path.getmtime(fileId):
+                        # Queried file was updated, update stale cache
+                        self._skelFileCache = filecache.updateFileCache(self.paths + [os.path.dirname(fileId)], 'json', _getSkeletonTags,self._skelFileCache, False)
+                        metadata = self._skelFileCache[fileId]
+                        mtime, name, desc, tags = metadata
+
+                    result = result.union(tags)
+            else:
+                log.warning('Could not get tags for material file %s. Does not exist in Material library.', filename)
+            return result
+        else:
+            for (path, values) in self._skelFileCache.items():
+                _, name, desc, tags = values
+                result = result.union(tags)
+        return result
+
+    def onUnload(self):
+        """
+        Called when this library taskview is being unloaded (usually when MH
+        is exited).
+        Note: make sure you connect the plugin's unload() method to this one!
+        """
+        self.storeCache()
+
+    def storeCache(self):
+        import filecache
+        if self._skelFileCache is None or len(self._skelFileCache) == 0:
+            return
+
+        filecache.cleanupCache(self._skelFileCache)
+
+        cachedir = getpath.getPath('cache')
+        if not os.path.isdir(cachedir):
+            os.makedirs(cachedir)
+        filecache.saveCache(self._skelFileCache, os.path.join(cachedir, 'skeleton_filecache.mhc'))
+
+    def loadCache(self):
+        import filecache
+        filename = getpath.getPath('cache/skeleton_filecache.mhc')
+        if os.path.isfile(filename):
+            self._skelFileCache = filecache.loadCache(filename)
 
     def drawJointHelpers(self):
         """
@@ -371,11 +375,16 @@ class SkeletonLibrary(gui3d.TaskView):
             self.jointsMesh = None
             self.selectedJoint = None
 
-        jointGroupNames = [group.name for group in self.human.meshData.faceGroups if group.name.startswith("joint-")]
-        # TODO maybe define a getter for this list in the skeleton module
         jointPositions = []
-        for groupName in jointGroupNames:
-            jointPositions.append(skeleton.getHumanJointPosition(self.human.meshData, groupName))
+        # TODO maybe define a getter for this list in the skeleton module
+        jointGroupNames = [group.name for group in self.human.meshData.faceGroups if group.name.startswith("joint-")]
+        if self.human.getSkeleton():
+            jointGroupNames += self.human.getSkeleton().joint_pos_idxs.keys()
+            for groupName in jointGroupNames:
+                jointPositions.append(self.human.getSkeleton().getJointPosition(groupName, self.human))
+        else:
+            for groupName in jointGroupNames:
+                jointPositions.append(skeleton._getHumanJointPosition(self.human, groupName))
 
         self.jointsMesh = skeleton_drawing.meshFromJoints(jointPositions, jointGroupNames)
         self.jointsMesh.priority = 100
@@ -390,79 +399,17 @@ class SkeletonLibrary(gui3d.TaskView):
 
         mh.redraw()
 
-
-    def showBoneWeights(self, boneName, boneWeights):
-        mesh = self.human.meshData
-        try:
-            weights = np.asarray(boneWeights[boneName][1], dtype=np.float32)
-            verts = boneWeights[boneName][0]
-        except:
-            return
-        red = np.maximum(weights, 0)
-        green = 1.0 - red
-        blue = np.zeros_like(red)
-        alpha = np.ones_like(red)
-        color = np.array([red,green,blue,alpha]).T
-        color = (color * 255.99).astype(np.uint8)
-        mesh.color[verts,:] = color
-        mesh.markCoords(verts, colr = True)
-        mesh.sync_all()
-
-
-    def highlightBone(self, name):
-        if self.debugLib is None:
-            return
-
-        # Highlight bones
-        self.selectedBone = name
-        setColorForFaceGroup(self.skelMesh, self.selectedBone, [216, 110, 39, 255])
-        gui3d.app.statusPersist(name)
-
-        # Draw bone weights
-        boneWeights = self.human.getVertexWeights()
-        self.showBoneWeights(name, boneWeights)
-
-        gui3d.app.redraw()
-
-
-    def removeBoneHighlights(self):
-        if self.debugLib is None:
-            return
-
-        # Disable highlight on bone
-        if self.selectedBone:
-            setColorForFaceGroup(self.skelMesh, self.selectedBone, [255,255,255,255])
-            gui3d.app.statusPersist('')
-
-            self.clearBoneWeights()
-            self.selectedBone = None
-
-            gui3d.app.redraw()
-
-
-    def clearBoneWeights(self):
-        mesh = self.human.meshData
-        mesh.color[...] = (255,255,255,255)
-        mesh.markCoords(colr = True)
-        mesh.sync_all()
-
     def onHumanChanged(self, event):
         human = event.human
         if event.change == 'reset':
-            if gui3d.app.currentTask == self:
+            if self.isShown():
                 # Refresh onShow status
                 self.onShow(event)
-        if event.change == 'targets':
-            # Set flag to do a deferred skeleton update in the future
-            if human._skeleton:
-                human._skeleton.dirty = True
-            self.humanChanged = True    # Used for updating joints
-
 
     def onHumanChanging(self, event):
         if event.change == 'reset':
             self.chooseSkeleton(None)
-            self.presetChooser.selectItem(None)
+            self.filechooser.selectItem(None)
 
 
     def onHumanRotated(self, event):
@@ -482,32 +429,14 @@ class SkeletonLibrary(gui3d.TaskView):
         if values[0] == "skeleton":
             skelFile = values[1]
 
-            skelFile = getpath.findFile(skelFile, self.paths)
+            skelFile = getpath.thoroughFindFile(skelFile, self.paths)
             if not os.path.isfile(skelFile):
                 log.warning("Could not load rig %s, file does not exist." % skelFile)
             else:
-                self.rigPresetFileSelected(skelFile, True)
+                self.chooseSkeleton(skelFile)
             return
-
-        # Make sure no skeleton is drawn
-        if self.skelObj:
-            self.skelObj.hide()
 
     def saveHandler(self, human, file):
         if human.getSkeleton():
             rigFile = getpath.getRelativePath(self.selectedRig, self.paths)
             file.write('skeleton %s\n' % rigFile)
-
-
-
-def setColorForFaceGroup(mesh, fgName, color):
-    if mesh is None:
-        return
-    color = np.asarray(color, dtype=np.uint8)
-    try:
-        groupVerts = mesh.getVerticesForGroups([fgName])
-        mesh.color[groupVerts] = color[None,:]
-    except KeyError:
-        return
-    mesh.markCoords(colr=True)
-    mesh.sync_color()

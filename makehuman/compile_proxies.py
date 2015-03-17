@@ -10,7 +10,7 @@
 
 **Authors:**           Jonas Hauquier, Glynn Clements
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -78,8 +78,14 @@ def compileProxy(path, human):
         proxy.saveBinaryProxy(proxy_, npzpath)
     except:
         print 'Unable to save compiled proxy for file %s' % path
-        #import traceback
-        #traceback.print_exc(file=sys.stdout)
+        import traceback
+        traceback.print_exc(file=sys.stdout)
+        if os.path.isfile(npzpath):
+            # Remove file again, in case an empty file is left
+            try:
+                os.remove(npzpath)
+            except:
+                pass
         return False
         
     return True

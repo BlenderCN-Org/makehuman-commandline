@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -46,7 +46,6 @@ import codecs
 import log
 
 import gui3d
-import exportutils
 
 from progress import Progress
 
@@ -54,6 +53,7 @@ from . import dae_materials
 from . import dae_controller
 from . import dae_geometry
 from . import dae_node
+from . import dae_animation
 
 #
 #    Size of end bones = 1 mm
@@ -74,7 +74,6 @@ def exportCollada(filepath, config):
     name = config.goodName(os.path.splitext(filename)[0])
 
     progress(0, 0.5, "Preparing")
-    #rawTargets = exportutils.collect.readTargets(human, config)    # TODO what is this used for?
 
     objects = human.getObjects(excludeZeroFaceObjs=True)
     # Clone meshes with desired scale and hidden faces/vertices filtered out
@@ -83,7 +82,11 @@ def exportCollada(filepath, config):
     # Scale skeleton
     skel = human.getSkeleton()
     if skel:
-        skel = skel.scaled(config.scale)
+        if config.scale != 1:
+            skel = skel.scaled(config.scale)
+        if not skel.isInRestPose():
+            # Export skeleton with the current pose as rest pose
+            skel = skel.createFromPose()
 
     # TODO a shared method for properly naming meshes would be a good idea
     for mesh in meshes:
@@ -132,11 +135,14 @@ def exportCollada(filepath, config):
         progress(0.7, 0.75, "Exporting controllers")
         dae_controller.writeLibraryControllers(fp, human, meshes, skel, config)
 
+        progress(0.75, 0.8, "Exporting animations")
+        dae_animation.writeLibraryAnimations(fp, human, config)
+
         progress(0.75, 0.9, "Exporting geometry")
         dae_geometry.writeLibraryGeometry(fp, meshes, config)
 
         progress(0.9, 0.99, "Exporting scene")
-        dae_node.writeLibraryVisualScenes(fp, meshes, skel, config)
+        dae_node.writeLibraryVisualScenes(fp, meshes, skel, config, name)
 
         fp.write(
             '  <scene>\n' +

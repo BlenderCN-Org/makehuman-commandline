@@ -10,7 +10,7 @@
 
 **Authors:**           Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -47,7 +47,6 @@ import proxy
 import filechooser as fc
 import log
 import getpath
-import cPickle as pickle
 
 
 class ProxyAction(gui3d.Action):
@@ -93,7 +92,7 @@ class ProxyChooserTaskView(gui3d.TaskView):
     Common base class for all proxy chooser libraries.
     """
 
-    def __init__(self, category, proxyName, tabLabel = None, multiProxy = False, tagFilter = False):
+    def __init__(self, category, proxyName, tabLabel = None, multiProxy = False, tagFilter = False, descriptionWidget = False):
         if not tabLabel:
             tabLabel = proxyName.capitalize()
         proxyName = proxyName.lower().replace(" ", "_")
@@ -103,6 +102,7 @@ class ProxyChooserTaskView(gui3d.TaskView):
         self.label = tabLabel
         self.multiProxy = multiProxy
         self.tagFilter = tagFilter
+        self.descriptionWidget = descriptionWidget
 
         self.homeProxyDir = getpath.getPath(os.path.join('data', proxyName))
         self.sysProxyDir = mh.getSysDataPath(proxyName)
@@ -114,7 +114,6 @@ class ProxyChooserTaskView(gui3d.TaskView):
 
         self.human = gui3d.app.selectedHuman
 
-        self._proxyCache = dict()
         self._proxyFileCache = None
         self._proxyFilePerUuid = None
 
@@ -153,6 +152,12 @@ class ProxyChooserTaskView(gui3d.TaskView):
             self.filechooser.setFileLoadHandler(fc.TaggedFileLoader(self))
             self.addLeftWidget(self.filechooser.createTagFilter())
 
+        if self.descriptionWidget:
+            descBox = self.addLeftWidget(gui.GroupBox('Description'))
+            self.descrLbl = descBox.addWidget(gui.TextView(''))
+            self.descrLbl.setSizePolicy(gui.QtGui.QSizePolicy.Ignored, gui.QtGui.QSizePolicy.Preferred)
+            self.descrLbl.setWordWrap(True)
+
         @self.filechooser.mhEvent
         def onFileSelected(filename):
             self.proxyFileSelected(filename)
@@ -178,6 +183,12 @@ class ProxyChooserTaskView(gui3d.TaskView):
         The file extension for proxy files of this type.
         """
         return ['mhpxy', 'mhclo']
+
+    def getProxyType(self):
+        """
+        The type name of the proxies this library manages.
+        """
+        return self.proxyName.capitalize()
 
     def getNotFoundIcon(self):
         """
@@ -274,16 +285,7 @@ class ProxyChooserTaskView(gui3d.TaskView):
         log.message('Selecting proxy file "%s" from %s library.', mhclofile, self.proxyName)
         human = self.human
 
-        pxy = None
-        mhcloId = getpath.canonicalPath(mhclofile)
-        if mhcloId in self._proxyCache:
-            pxy = self._proxyCache[mhcloId]
-            if pxy.mtime < os.path.getmtime(mhclofile):
-                pxy = None
-
-        if not pxy:
-            pxy = proxy.loadProxy(human, mhclofile, type=self.proxyName.capitalize())
-            self._proxyCache[mhcloId] = pxy
+        pxy = proxy.loadProxy(human, mhclofile, type=self.getProxyType())
 
         if pxy.uuid in [p.uuid for p in self.getSelection() if p is not None]:
             log.debug("Proxy with UUID %s (%s) already loaded in %s library. Skipping.", pxy.uuid, pxy.file, self.proxyName)
@@ -302,7 +304,7 @@ class ProxyChooserTaskView(gui3d.TaskView):
         gui3d.app.addObject(obj)
 
         self.filechooser.selectItem(mhclofile)
-
+        self.filechooser.selectItem( self.getAlternativeFile(mhclofile) )  # In case an ascii or binary file was loaded instead
 
         self.adaptProxyToHuman(pxy, obj)
         obj.setSubdivided(human.isSubdivided()) # Copy subdivided state of human
@@ -311,6 +313,9 @@ class ProxyChooserTaskView(gui3d.TaskView):
         self.selectedProxies.append(pxy)
 
         self.filechooser.selectItem(mhclofile)
+
+        if self.descriptionWidget:
+            self.descrLbl.setText(pxy.description)
 
         self.proxySelected(pxy)
 
@@ -337,6 +342,7 @@ class ProxyChooserTaskView(gui3d.TaskView):
         gui3d.app.removeObject(obj)
         del self.selectedProxies[idx]
         self.filechooser.deselectItem(mhclofile)
+        self.filechooser.deselectItem( self.getAlternativeFile(mhclofile) )  # In case an ascii or binary file was loaded instead
 
         self.proxyDeselected(pxy, suppressSignal)
         pxy.object = None   # Drop pointer to object
@@ -394,10 +400,32 @@ class ProxyChooserTaskView(gui3d.TaskView):
         Get the index of specified mhclopath within the list returned by getSelection()
         Returns None if the proxy of specified path is not in selection.
         """
+        mhcloFile = getpath.canonicalPath(mhcloFile)
+        altFile = getpath.canonicalPath(self.getAlternativeFile(mhcloFile))
         for pIdx, p in enumerate(self.getSelection()):
-            if getpath.canonicalPath(p.file) == getpath.canonicalPath(mhcloFile):
+            if getpath.canonicalPath(p.file) in [mhcloFile, altFile]:
                 return pIdx
         return None
+
+    def getAlternativeFile(self, filename):
+        """
+        If a path to a compiled proxy file is given, returns the ascii version,
+        if the ascii version path is given, returns the path to the compiled
+        binary proxy file.
+        """
+        if not filename:
+            return filename 
+        if os.path.splitext(filename)[1] == '.mhpxy':
+            return os.path.splitext(filename)[0] + self.getAsciiFileExtension()
+        else:
+            return os.path.splitext(filename)[0] + '.mhpxy'
+
+    def getAsciiFileExtension(self):
+        """
+        The file extension used for ASCII (non-compiled) proxy source files
+        for the proxies managed by this library.
+        """
+        return proxy.getAsciiFileExtension(self.getProxyType())
 
     def resetSelection(self):
         """
@@ -409,9 +437,9 @@ class ProxyChooserTaskView(gui3d.TaskView):
         #self.filechooser.deselectAll()
         self.deselectAllProxies()
 
-    def adaptProxyToHuman(self, pxy, obj, updateSubdivided=True):
+    def adaptProxyToHuman(self, pxy, obj, updateSubdivided=True, fit_to_posed=False):
         mesh = obj.getSeedMesh()
-        pxy.update(mesh)
+        pxy.update(mesh, fit_to_posed)
         mesh.update()
         # Update subdivided mesh if smoothing is enabled
         if updateSubdivided and obj.isSubdivided():
@@ -432,9 +460,15 @@ class ProxyChooserTaskView(gui3d.TaskView):
         self.filechooser.refresh()
         selectedProxies = self.getSelection()
         if len(selectedProxies) > 1:
-            self.filechooser.setSelections( [p.file for p in selectedProxies] )
+            fnames = [p.file for p in selectedProxies] + \
+                     [self.getAlternativeFile(p.file) for p in selectedProxies]
+            self.filechooser.setSelections(fnames)
         elif len(selectedProxies) > 0:
-            self.filechooser.selectItem(selectedProxies[0].file)
+            proxypath = selectedProxies[0].file
+            if self.filechooser.contains(proxypath):
+                self.filechooser.selectItem(proxypath)
+            else:
+                self.filechooser.selectItem(self.getAlternativeFile(proxypath))
         elif not self.multiProxy:
             # Select "None" item in list
             self.filechooser.selectItem(None)
@@ -455,11 +489,16 @@ class ProxyChooserTaskView(gui3d.TaskView):
             self.showObjects() # Make sure objects are shown again after onHumanChanging events
             #log.debug("Human changed, adapting all proxies (event: %s)", event)
             self.adaptAllProxies()
+        if event.change in ['poseRefresh']:
+            # Update subdivided proxies after posing
+            for obj in self.getObjects():
+                if obj.isSubdivided():
+                    obj.getSubdivisionMesh()
 
     def onHumanChanging(self, event):
         if event.change == 'modifier':
             if gui3d.app.settings.get('realtimeFitting', False):
-                self.adaptAllProxies(updateSubdivided=False)
+                self.adaptAllProxies(updateSubdivided=False, fit_to_posed=True)
                 for obj in self.getObjects():
                     if obj.isSubdivided():
                         obj.getSeedMesh().setVisibility(1)
@@ -467,13 +506,13 @@ class ProxyChooserTaskView(gui3d.TaskView):
             else:
                 self.hideObjects()
 
-    def adaptAllProxies(self, updateSubdivided=True):
+    def adaptAllProxies(self, updateSubdivided=True, fit_to_posed=False):
         proxyCount = len(self.getSelection())
         if proxyCount > 0:
             pass  #log.message("Adapting all %s proxies (%s).", self.proxyName, proxyCount)
         for pIdx, pxy in enumerate(self.getSelection()):
             obj = self.getObjects()[pIdx]
-            self.adaptProxyToHuman(pxy, obj, updateSubdivided)
+            self.adaptProxyToHuman(pxy, obj, updateSubdivided, fit_to_posed)
 
     def loadHandler(self, human, values):
         if values[0] == 'status':
@@ -511,37 +550,67 @@ class ProxyChooserTaskView(gui3d.TaskView):
         """
         Save MH cache file for the proxy files managed by this library.
         """
+        import filecache
         if self._proxyFileCache == None or len(self._proxyFileCache) == 0:
             return
         saveDir = getpath.getPath('cache')
         if not os.path.isdir(saveDir):
             os.makedirs(saveDir)
-        f = open( os.path.join(saveDir, self.proxyName + '_filecache.mhc'), "wb")
-        pickle.dump(self._proxyFileCache, f, protocol=2)
-        f.close()
+        filecache.saveCache(self._proxyFileCache, os.path.join(saveDir, self.proxyName + '_filecache.mhc'))
 
     def loadProxyFileCache(self, restoreFromFile = True):
         """
         Initialize or update the proxy file cache for this proxy library.
         Will attempt to load a previous cache from file if restoreFromFile is true.
         """
+        import filecache
         self._proxyFilePerUuid = None
         if restoreFromFile:
             try:
                 cacheFile = getpath.getPath(os.path.join('cache', self.proxyName + '_filecache.mhc'))
                 if os.path.isfile(cacheFile):
-                    f = open(cacheFile, "rb")
-                    self._proxyFileCache = pickle.load(f)
-                    f.close()
+                    self._proxyFileCache = filecache.loadCache(cacheFile)
             except:
                 log.debug("Failed to restore proxy list cache from file %s", cacheFile)
-        self._proxyFileCache = proxy.updateProxyFileCache(self.paths, self.getFileExtension(), self._proxyFileCache)
+        self._proxyFileCache = proxy.updateProxyFileCache(self.paths, self.getFileExtension(), self._proxyFileCache, proxytype=self.getProxyType())
 
     def updateProxyFileCache(self):
         """
         Update proxy file cache to add newly added proxy files.
         """
         self.loadProxyFileCache(restoreFromFile = False)
+
+    def findProxyMetadataByFilename(self, path):
+        """
+        Retrieve proxy metadata by canonical path from metadata cache.
+        Returns None or metadata in the form: (mtime, uuid, tags)
+        """
+        proxyId = getpath.canonicalPath(path)
+
+        if self._proxyFileCache is None:
+            self.loadProxyFileCache()
+
+        if self._proxyFilePerUuid is None:
+            self._loadUuidLookup()
+
+        if proxyId not in self._proxyFileCache:
+            # Try again once more, but update the metadata cache first (lazy cache for performance reasons)
+            self.updateProxyFileCache()
+            self._loadUuidLookup()
+
+            if proxyId not in self._proxyFileCache:
+                log.warning('Could not get metadata for proxy with filename %s. Does not exist in %s library.', proxyId, self.proxyName)
+                return None
+
+        metadata = self._proxyFileCache[proxyId]
+        mtime = metadata[0]
+        if mtime < os.path.getmtime(proxyId):
+            # Queried file was updated, update stale cache
+            self.updateProxyFileCache()
+            self._loadUuidLookup()
+            metadata = self._proxyFileCache[proxyId]
+
+        return metadata
 
     def findProxyByUuid(self, uuid):
         """
@@ -599,12 +668,13 @@ class ProxyChooserTaskView(gui3d.TaskView):
                 log.warning('Could not get tags for proxy with UUID %s. Does not exist in %s library.', uuid, self.proxyName)
                 return result
         elif filename:
-            proxyId = getpath.canonicalPath(filename)
-            if proxyId not in self._proxyFileCache:
+            pxymetadata = self.findProxyMetadataByFilename(filename)
+            if pxymetadata is not None:
+                _, _, tags = pxymetadata
+                result = result.union(tags)
+            else:
                 log.warning('Could not get tags for proxy with filename %s. Does not exist in %s library.', filename, self.proxyName)
-                return result
-            _, _, tags = self._proxyFileCache[proxyId]
-            result = result.union(tags)
+            return result
         else:
             for (path, values) in self._proxyFileCache.items():
                 _, uuid, tags = values

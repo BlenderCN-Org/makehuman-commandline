@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/external_tools_license.html)
 
@@ -201,13 +201,13 @@ class CProxy:
             elif status == doWeightingVerts:
                 pass
             else:
-                print("OTH", key, status)
                 try:
                     n = int(key)
                 except:
                     n = -1
                 if n >= 0:
-                    halt
+                    raise RuntimeError("proxy.read %s %s" % (key, status))
+
 
 def scaleInfo(words):
     v1 = int(words[1])

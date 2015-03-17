@@ -10,7 +10,7 @@
 
 **Authors:**           Jonas Hauquier, Marc Flerackers
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -44,12 +44,12 @@ import material
 import os
 import gui3d
 import mh
-import gui
 from proxy import SimpleProxyTypes
 import filechooser as fc
 from humanobjchooser import HumanObjectSelector
 import log
 import getpath
+import filecache
 
 class MaterialAction(gui3d.Action):
     def __init__(self, obj, after):
@@ -73,11 +73,8 @@ class MaterialTaskView(gui3d.TaskView):
         gui3d.TaskView.__init__(self, category, 'Material', label='Skin/Material')
         self.human = gui3d.app.selectedHuman
 
-        # Paths, in order, in which relative material filepaths will be searched
-        self.searchPaths = [mh.getPath(), mh.getSysDataPath()]
-        self.searchPaths = [os.path.abspath(p) for p in self.searchPaths]
-
         self.materials = None
+        self._matFileCache = None
 
         self.filechooser = self.addRightWidget(fc.IconListFileChooser(self.materials, 'mhmat', ['thumb', 'png'], mh.getSysDataPath('skins/notfound.thumb'), name='Material'))
         self.filechooser.setIconSize(50,50)
@@ -99,6 +96,73 @@ class MaterialTaskView(gui3d.TaskView):
         def onActivate(value):
             self.reloadMaterialChooser()
 
+        self.filechooser.setFileLoadHandler(fc.TaggedFileLoader(self))
+        self.addLeftWidget(self.filechooser.createTagFilter())
+
+    def getTags(self, filename=None):
+        def _getMaterialTags(filename):
+            return material.peekMetadata(filename)
+
+        if self._matFileCache is None:
+            # Init cache
+            self.loadCache()
+            self._matFileCache = filecache.updateFileCache(self.materials, 'mhmat', _getMaterialTags,self._matFileCache, False)
+
+        result = set()
+        # TODO move most of this (duplicated) logic inside a class in filecache
+
+        if filename:
+            fileId = getpath.canonicalPath(filename)
+            if fileId not in self._matFileCache:
+                # Lazily update cache
+                self._matFileCache = filecache.updateFileCache(self.materials + [os.path.dirname(fileId)], 'mhmat', _getMaterialTags,self._matFileCache, False)
+
+            if fileId in self._matFileCache:
+                metadata = self._matFileCache[fileId]
+                if metadata is not None:
+                    mtime, name, tags = metadata
+
+                    if mtime < os.path.getmtime(fileId):
+                        # Queried file was updated, update stale cache
+                        self._matFileCache = filecache.updateFileCache(self.materials + [os.path.dirname(fileId)], 'mhmat', _getMaterialTags,self._matFileCache, False)
+                        metadata = self._matFileCache[fileId]
+                        mtime, name, tags = metadata
+
+                    result = result.union(tags)
+            else:
+                log.warning('Could not get tags for material file %s. Does not exist in Material library.', filename)
+            return result
+        else:
+            for (path, values) in self._matFileCache.items():
+                _, name, tags = values
+                result = result.union(tags)
+        return result
+
+    def onUnload(self):
+        """
+        Called when this library taskview is being unloaded (usually when MH
+        is exited).
+        Note: make sure you connect the plugin's unload() method to this one!
+        """
+        self.storeCache()
+
+    def storeCache(self):
+        import filecache
+        if self._matFileCache is None or len(self._matFileCache) == 0:
+            return
+
+        filecache.cleanupCache(self._matFileCache)
+
+        cachedir = getpath.getPath('cache')
+        if not os.path.isdir(cachedir):
+            os.makedirs(cachedir)
+        filecache.saveCache(self._matFileCache, os.path.join(cachedir, 'material_filecache.mhc'))
+
+    def loadCache(self):
+        import filecache
+        filename = getpath.getPath('cache/material_filecache.mhc')
+        if os.path.isfile(filename):
+            self._matFileCache = filecache.loadCache(filename)
 
     def onShow(self, event):
         # When the task gets shown, set the focus to the file chooser
@@ -169,6 +233,7 @@ class MaterialTaskView(gui3d.TaskView):
 
         # Reload filechooser
         self.filechooser.deselectAll()
+        self.filechooser.tagFilter.clearAll()
         self.filechooser.setPaths(self.materials)
         self.filechooser.refresh()
         if selectedMat:
@@ -189,7 +254,7 @@ class MaterialTaskView(gui3d.TaskView):
                 human.material = mat
                 return
             else:
-                absP = getpath.findFile(path, [mh.getPath('data'), mh.getSysDataPath()])
+                absP = getpath.thoroughFindFile(path)
                 if not os.path.isfile(absP):
                     log.warning('Could not find material %s for skinMaterial parameter.', values[1])
                     return
@@ -216,11 +281,6 @@ class MaterialTaskView(gui3d.TaskView):
                 filepath = self.getMaterialPath(filepath, proxy.file)
                 proxy.object.material = material.fromFile(filepath)
                 return
-            elif human.genitalsProxy and human.genitalsProxy.getUuid() == uuid:
-                proxy = human.genitalsProxy
-                filepath = self.getMaterialPath(filepath, proxy.file)
-                proxy.object.material = material.fromFile(filepath)
-                return
             elif not uuid in human.clothesProxies.keys():
                 log.error("Could not load material for proxy with uuid %s (%s)! No such proxy." % (uuid, name))
                 return
@@ -237,25 +297,25 @@ class MaterialTaskView(gui3d.TaskView):
         """
         # TODO move as helper func to material module
         if objFile:
-            objFile = os.path.abspath(objFile)
-            if os.path.isdir(objFile):
-                objFile = os.path.dirname(objFile)[0]
-            searchPaths = [ objFile ] + self.searchPaths
+            objFile = getpath.canonicalPath(objFile)
+            if os.path.isfile(objFile):
+                objFile = os.path.dirname(objFile)
+            searchPaths = [ objFile ]
         else:
-            searchPaths = self.searchPaths
+            searchPaths = []
 
-        return getpath.getRelativePath(filepath, searchPaths)
+        return getpath.getJailedPath(filepath, searchPaths)
 
     def getMaterialPath(self, relPath, objFile = None):
         if objFile:
             objFile = os.path.abspath(objFile)
-            if os.path.isdir(objFile):
-                objFile = os.path.split(objFile)[0]
-            searchPaths = [ objFile ] + self.searchPaths
+            if os.path.isfile(objFile):
+                objFile = os.path.dirname(objFile)
+            searchPaths = [ objFile ]
         else:
-            searchPaths = self.searchPaths
+            searchPaths = []
 
-        return getpath.findFile(relPath, searchPaths)
+        return getpath.thoroughFindFile(relPath, searchPaths)
 
     def onHumanChanged(self, event):
         if event.change == 'reset':
@@ -281,11 +341,6 @@ class MaterialTaskView(gui3d.TaskView):
             eyesObj = proxy.object
             materialPath = self.getRelativeMaterialPath(eyesObj.material.filename, proxy.file)
             file.write('material %s %s %s\n' % (proxy.name, proxy.getUuid(), materialPath))
-        if human.genitalsProxy:
-            proxy = human.genitalsProxy
-            genitalsObj = proxy.object
-            materialPath = self.getRelativeMaterialPath(genitalsObj.material.filename, proxy.file)
-            file.write('material %s %s %s\n' % (proxy.name, proxy.getUuid(), materialPath))
 
 
 # This method is called when the plugin is loaded into makehuman
@@ -293,6 +348,7 @@ class MaterialTaskView(gui3d.TaskView):
 
 
 def load(app):
+    global taskview
     category = app.getCategory('Materials')
     taskview = MaterialTaskView(category)
     taskview.sortOrder = 0
@@ -308,4 +364,4 @@ def load(app):
 
 
 def unload(app):
-    pass
+    taskview.onUnload()

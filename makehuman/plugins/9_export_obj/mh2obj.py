@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -39,7 +39,6 @@ Exports proxy mesh to obj
 
 import wavefront
 import os
-import exportutils
 from progress import Progress
 import proxy
 
@@ -49,8 +48,6 @@ import proxy
 
 def exportObj(filepath, config=None):
     progress = Progress(0, None)
-    if config is None:
-        config = exportutils.config.Config()
     human = config.human
     config.setupTexFolder(filepath)
     filename = os.path.basename(filepath)

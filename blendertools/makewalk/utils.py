@@ -23,7 +23,7 @@
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      https://bitbucket.org/MakeHuman/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2014
+# Script copyright (C) MakeHuman Team 2001-2015
 # Coding Standards:    See http://www.makehuman.org/node/165
 
 
@@ -90,6 +90,14 @@ def isMhxRig(rig):
         return False
 
 
+def isMhOfficialRig(rig):
+    try:
+        rig.pose.bones['risorius03.R']
+        return True
+    except KeyError:
+        return False
+
+
 def isMhx7Rig(rig):
     try:
         rig.pose.bones['FootRev_L']
@@ -108,7 +116,8 @@ def isRigify(rig):
 
 def isMakeHumanRig(rig):
     try:
-        return rig["MhAlpha8"]
+        rig["MhAlpha8"]
+        return True
     except KeyError:
         return False
 
@@ -166,6 +175,11 @@ def getIkBoneList(rig):
             hips = rig.pose.bones["root"]
         elif isRigify(rig):
             hips = rig.pose.bones["hips"]
+        else:
+            for bone in rig.data.bones:
+                if bone.parent is None:
+                    hips = bone
+                    break
     blist = [hips]
     for bname in ['hand.ik.L', 'hand.ik.R', 'foot.ik.L', 'foot.ik.R']:
         try:
@@ -470,10 +484,11 @@ def problemFreeFileSelect(self, context):
 
 
 def drawObjectProblems(self):
-    self.layout.label("MakeWalk cannot use this rig because it has:")
-    for problem in self.problems.split("\n"):
-        self.layout.label("  %s" % problem)
-    self.layout.label("Apply object transformations before using MakeWalk")
+    if self.problems:
+        self.layout.label("MakeWalk cannot use this rig because it has:")
+        for problem in self.problems.split("\n"):
+            self.layout.label("  %s" % problem)
+        self.layout.label("Apply object transformations before using MakeWalk")
 
 #
 #   showProgress(n, frame):

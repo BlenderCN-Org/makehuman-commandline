@@ -10,7 +10,7 @@
 
 **Authors:**           Marc Flerackers, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -55,7 +55,7 @@ class ExportTaskView(gui3d.TaskView):
         self.showOverwriteWarning = False
 
         self.fileentry = self.addTopWidget(gui.FileEntryView('Export', mode='save'))
-        self.fileentry.directory = mh.getPath('exports')
+        self.fileentry.directory = gui3d.app.settings.get('exportdir', mh.getPath('exports'))
         self.fileentry.filter = 'All Files (*.*)'
 
         self.exportBodyGroup = []
@@ -92,6 +92,9 @@ class ExportTaskView(gui3d.TaskView):
 
             if not os.path.exists(dir):
                 os.makedirs(dir)
+
+            # Remember last used export folder
+            gui3d.app.settings['exportdir'] = dir
 
             def filename(targetExt, different = False):
                 if not different and ext != '' and ('.' + targetExt.lower()) != ext.lower():

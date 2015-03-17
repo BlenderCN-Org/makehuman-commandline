@@ -10,7 +10,7 @@
 
 **Authors:**           Glynn Clements
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -38,6 +38,7 @@ TODO
 """
 
 import sys
+import os
 import log
 
 from PyQt4 import QtCore, QtGui, QtOpenGL
@@ -49,6 +50,19 @@ import qtgui
 import queue
 import time
 import getpath
+
+import makehuman
+import getpath
+if False and makehuman.isBuild():
+    # Set absolute Qt plugin path programatically on frozen deployment to fix
+    # crashes when Qt is on DLL PATH in windows.
+    # No qt.conf file should be present in the application folder!
+    deployment_path = getpath.canonicalPath(getpath.getSysPath())
+    QtCore.QCoreApplication.addLibraryPath(os.path.join(deployment_path,'qt4_plugins'))
+    # Plugins will be loaded when QCoreApplication object is constructed. Some
+    # Qt deployments are known to prepend new library paths at this time, such
+    # as /usr/lib/qt4/plugins on some linux platforms, but this is not a likely
+    # case on windows platforms.
 
 # Timeout in seconds after which moving the mousewheel will pick a new mouse pos
 # TODO make this configureable in settings?
@@ -162,6 +176,7 @@ g_mousewheel_t = None
 class Canvas(QtOpenGL.QGLWidget):
     def __init__(self, parent, app):
         self.app = app
+        self.blockRedraw = False
         format = QtOpenGL.QGLFormat()
         format.setAlpha(True)
         format.setDepthBufferSize(24)
@@ -277,6 +292,9 @@ class Canvas(QtOpenGL.QGLWidget):
         gl.OnInit()
 
     def paintGL(self):
+        if self.blockRedraw:
+            self.app.logger_redraw.debug('paintGL (blocked)')
+            return
         self.app.logger_redraw.debug('paintGL')
         gl.renderToCanvas()
 
@@ -386,11 +404,20 @@ def supportsSVG():
     Determines whether Qt supports SVG image files.
     """
     qtVersion = getQtVersion()
-    # TODO
-    # pyinstaller windows builds appear to cause issues with this
-    # py2app on OSX appears not to include qt svg libs either...
+    # Care needs to be taken that pyinstaller windows builds and
+    # OSX py2app builds include the qt svg lib and plugin
     return qtVersion[0] >= 4 and qtVersion[1] >= 2 and \
-        'svg' in [ str(s).lower() for s in QtGui.QImageReader.supportedImageFormats() ]
+        'svg' in supportedImageFormats()
+
+def supportsJPG():
+    return 'jpg' in supportedImageFormats()
+
+def supportedImageFormats():
+    """
+    The image formats supported by MakeHuman. This is determined by the plugins
+    that were loaded into the Qt libraries.
+    """
+    return [ str(s).lower() for s in QtGui.QImageReader.supportedImageFormats() ]
 
 class Frame(QtGui.QMainWindow):
     title = "MakeHuman"

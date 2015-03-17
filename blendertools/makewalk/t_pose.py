@@ -23,7 +23,7 @@
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      https://bitbucket.org/MakeHuman/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2014
+# Script copyright (C) MakeHuman Team 2001-2015
 # Coding Standards:    See http://www.makehuman.org/node/165
 
 import bpy
@@ -169,9 +169,7 @@ def autoTPose(rig, scn):
 
 def setTPose(rig, scn, filename=None, reload=False):
     if reload or not rig.McpTPoseDefined:
-        if isMakeHumanRig(rig) and scn.McpMakeHumanTPose:
-            filename = "target_rigs/makehuman_tpose.json"
-        elif filename is None:
+        if filename is None:
             filename = rig.McpTPoseFile
         hasFile = loadPose(rig, filename)
         if not hasFile:
@@ -431,7 +429,7 @@ def initRig(context):
         pb.matrix_basis = mat
 
     if isRigify(rig):
-        setRigifyFKIK(rig, 0)
+        setRigifyFKIK(rig, 0.0)
 
     return rig
 

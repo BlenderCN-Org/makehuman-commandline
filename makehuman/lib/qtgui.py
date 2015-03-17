@@ -10,7 +10,7 @@
 
 **Authors:**           Glynn Clements, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -40,7 +40,7 @@ TODO
 import sys
 import os
 
-from PyQt4 import QtCore, QtGui
+from PyQt4 import QtCore, QtGui, QtSvg
 
 from core import G
 import events3d
@@ -48,7 +48,10 @@ import language
 #import log
 from getpath import getSysDataPath, getPath, isSubPath, pathToUnicode
 
-
+def dummySvgCall():
+    """Code which is here just so pyinstaller can discover we need SVG support"""
+    dummy = QtSvg.QGraphicsSvgItem("some_svg.svg")
+    
 def getLanguageString(text, appendData=None, appendFormat=None):
     """Function to get the translation of a text according to the selected
     language.
@@ -1167,6 +1170,9 @@ class Dialog(QtGui.QDialog):
 
         which = self.exec_()
 
+        if helpId and self.check.isChecked():
+            self.helpIds.add(helpId)
+
         if which == QtGui.QDialog.Accepted:
             if button1Action:
                 button1Action()
@@ -1176,8 +1182,6 @@ class Dialog(QtGui.QDialog):
                 button2Action()
             return False
 
-        if helpId and self.check.isChecked():
-            self.helpIds.add(helpId)
 
 
 class FileEntryView(QtGui.QWidget, Widget):
@@ -1253,8 +1257,8 @@ class FileEntryView(QtGui.QWidget, Widget):
             Before the browse dialog is shown, make sure to set
             its path properly.
             """
-            if self.mode == 'dir':
-                self.browse.path = self.directory
+            if self.mode == 'dir' or not self.text:
+                self.browse.directory = self.directory
             else:
                 self.browse.path = self.path
 
@@ -1382,7 +1386,7 @@ class FileEntryView(QtGui.QWidget, Widget):
 
 class SplashScreen(QtGui.QSplashScreen):
     def __init__(self, image, version=""):
-        super(SplashScreen, self).__init__(G.app.mainwin, getPixmap(image))
+        super(SplashScreen, self).__init__(G.app.mainwin, getPixmap(image), QtCore.Qt.WindowStaysOnTopHint)
         self._stdout = sys.stdout
         self.messageRect = QtCore.QRect(354, 531, 432, 41)
         self.messageAlignment = QtCore.Qt.AlignLeft
@@ -1747,9 +1751,12 @@ class BrowseButton(Button):
                 path = os.getcwd()
         return pathToUnicode(os.path.normpath(path))
 
-    def __init__(self, mode = 'open'):
-        super(BrowseButton, self).__init__("...")
-        self._path = self.getExistingPath("")
+    def __init__(self, mode = 'open', label=None):
+        if label is None:
+            label = '...'
+        super(BrowseButton, self).__init__(label)
+        self._directory = self.getExistingPath("")
+        self.filename = ""
         self._filter = ''
         self._mode = None
 
@@ -1766,11 +1773,24 @@ class BrowseButton(Button):
 
     mode = property(getMode, setMode)
 
+    def getDirectory(self):
+        """Get the directory in which the dialog will browse."""
+        return self._directory
+
+    def setDirectory(self, dir):
+        """Set the directory in which the dialog will browse."""
+        self._directory = pathToUnicode(dir)
+
+    directory = property(getDirectory, setDirectory)
+
     def getPath(self):
-        return self._path
+        return pathToUnicode(os.path.normpath(os.path.join(
+            self.directory, self.filename)))
 
     def setPath(self, path):
-        self._path = pathToUnicode(os.path.normpath(path))
+        """WARNING: Use only with complete file paths that include filename."""
+        self.directory = pathToUnicode(os.path.dirname(path))
+        self.filename = pathToUnicode(os.path.basename(path))
 
     path = property(getPath, setPath)
 
@@ -1786,9 +1806,9 @@ class BrowseButton(Button):
         self.callEvent('beforeBrowse', None)
 
         path = self.getExistingPath(self.path)
-        if self.mode == 'save' and path != self.path:
+        if self.mode == 'save' and self.filename:
             # Don't discard filename when saving
-            path = os.path.join(path, os.path.basename(self.path))
+            path = os.path.join(path, self.filename)
 
         if self.mode == 'open':
             path = str(QtGui.QFileDialog.getOpenFileName(G.app.mainwin, directory=path, filter=self.filter))
@@ -1798,7 +1818,8 @@ class BrowseButton(Button):
             path = str(QtGui.QFileDialog.getExistingDirectory(G.app.mainwin, directory=path))
 
         if path:
-            self.path = path
+            if self.mode == 'dir': self.directory = path
+            else: self.path = path
         self.callEvent('onClicked', pathToUnicode(path))
 
 
@@ -1843,18 +1864,16 @@ class Action(QtGui.QAction, Widget):
     @classmethod
     def getIcon(cls, name):
         from qtui import supportsSVG
-        # TODO SVG icons disabled until the SVG icons are updated
-
         # icon = G.app.mainwin.style().standardIcon(QtGui.QStyle.SP_MessageBoxWarning)
         svgPath = os.path.join(getSysDataPath('icons'), name + '.svg')
-        if False and supportsSVG() and os.path.isfile(svgPath):
+        if supportsSVG() and os.path.isfile(svgPath):
             path = svgPath
         else:
             path = os.path.join(getSysDataPath('icons'), name + '.png')
 
         if G.app.theme:
             themePath = os.path.join(getSysDataPath('themes'), G.app.theme, 'icons', name + '.svg')
-            if False and supportsSVG() and os.path.isfile(themePath):
+            if supportsSVG() and os.path.isfile(themePath):
                 path = themePath
             else:
                 themePath = os.path.join(getSysDataPath('themes'), G.app.theme, 'icons', name + '.png')

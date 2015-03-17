@@ -10,7 +10,7 @@
 
 **Authors:**           Glynn Clements, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -218,16 +218,17 @@ class MHApplication(gui3d.Application, mh.Application):
                 'cameraAutoZoom': False,
                 'language': 'english',
                 'highspeed': 5,
-                'realtimeNormalUpdates': True,
+                'realtimeNormalUpdates': False,
                 'units': 'metric',
                 'guiTheme': 'makehuman',
-                'restoreWindowSize': True
+                'restoreWindowSize': True,
+                'version': mh.getVersionDigitsStr()
             }
         else:
             self.settings = {
                 'realtimeUpdates': True,
                 'realtimeFitting': True,
-                'realtimeNormalUpdates': True,
+                'realtimeNormalUpdates': False,
                 'cameraAutoZoom': False,
                 'lowspeed': 1,
                 'highspeed': 5,
@@ -239,7 +240,8 @@ class MHApplication(gui3d.Application, mh.Application):
                 'sliderImages': True,
                 'guiTheme': 'makehuman',
                 'preloadTargets': False,
-                'restoreWindowSize': False
+                'restoreWindowSize': True,
+                'version': mh.getVersionDigitsStr()
             }
 
         self.loadHandlers = {}
@@ -267,6 +269,7 @@ class MHApplication(gui3d.Application, mh.Application):
         self._scene = None
         self.backplaneGrid = None
         self.groundplaneGrid = None
+        self.backgroundGradient = None
 
         self.theme = None
 
@@ -291,6 +294,8 @@ class MHApplication(gui3d.Application, mh.Application):
         #self.guiCamera._fovAngle = 45
         #self.guiCamera._eyeZ = 10
         #self.guiCamera._projection = 0
+
+        # TODO use simpler camera for gui
         self.guiCamera = mh.OrbitalCamera()
 
         mh.cameras.append(self.guiCamera)
@@ -387,9 +392,13 @@ class MHApplication(gui3d.Application, mh.Application):
 
         @self.selectedHuman.mhEvent
         def onChanged(event):
+            self.actions.pose.setEnabled(self.selectedHuman.isPoseable())
+
             if event.change == 'smooth':
                 # Update smooth action state (without triggering it)
                 self.actions.smooth.setChecked(self.selectedHuman.isSubdivided())
+            elif event.change in ['poseState', 'poseRefresh']:
+                self.actions.pose.setChecked(self.selectedHuman.isPosed())
             elif event.change == 'load':
                 self.currentFile.loaded(event.path)
             elif event.change == 'save':
@@ -517,7 +526,7 @@ class MHApplication(gui3d.Application, mh.Application):
 
     def loadGui(self):
 
-        progress = Progress(4)
+        progress = Progress(5)
 
         category = self.getCategory('Settings')
         category.addTask(PluginsTaskView(category))
@@ -533,6 +542,10 @@ class MHApplication(gui3d.Application, mh.Application):
         self.loadGrid()
         progress.step()
 
+        # Create background gradient
+        self.loadBackgroundGradient()
+        progress.step()
+
         # self.progressBar.hide()
 
     def loadGrid(self):
@@ -543,13 +556,13 @@ class MHApplication(gui3d.Application, mh.Application):
             self.removeObject(self.groundplaneGrid)
 
         offset = self.selectedHuman.getJointPosition('ground')[1]
-        spacing = 1 if self.settings['units'] == 'metric' else 3.048
+        spacing = 1 if self.settings.get('units', 'metric') == 'metric' else 3.048
 
         # Background grid
         gridSize = int(200/spacing)
         if gridSize % 2 != 0:
             gridSize += 1
-        if self.settings['units'] == 'metric':
+        if self.settings.get('units', 'metric') == 'metric':
             subgrids = 10
         else:
             subgrids = 12
@@ -582,6 +595,50 @@ class MHApplication(gui3d.Application, mh.Application):
         groundGridMesh.restrictVisibleAboveGround = True
         self.addObject(self.groundplaneGrid)
 
+        self.actions.grid.setChecked(True)
+
+    def loadBackgroundGradient(self):
+        import numpy as np
+
+        if self.backgroundGradient:
+            self.removeObject(self.backgroundGradient)
+
+        mesh = geometry3d.RectangleMesh(10, 10, centered=True)
+
+        mesh.setColors(self.bgBottomLeftColor, self.bgBottomRightColor, 
+                       self.bgTopRightColor, self.bgTopLeftColor)
+
+        self.backgroundGradient = gui3d.Object(mesh)
+        self.backgroundGradient.priority = -200
+        self.backgroundGradient.excludeFromProduction = True
+        self.backgroundGradient.setShadeless(1)
+        self.backgroundGradient.material.configureShading(vertexColors=True)
+
+        self.addObject(self.backgroundGradient)
+
+        self._updateBackgroundDimensions()
+
+    def onResizedCallback(self, event):
+        gui3d.Application.onResizedCallback(self, event)
+        self._updateBackgroundDimensions()
+
+    def _updateBackgroundDimensions(self, width=G.windowWidth, height=G.windowHeight):
+        if self.backgroundGradient is None:
+            return
+
+        cam = self.backgroundGradient.mesh.getCamera()
+        #minX,minY,_ = cam.convertToWorld2D(0,0)
+        #maxX,maxY,_ = cam.convertToWorld2D(width, height)
+        #self.backgroundGradient.mesh.resize(abs(maxX - minX), abs(maxY - minY))
+
+        # TODO hack for orbital camera, properly clean this up some day
+        height = cam.getScale()
+        aspect = cam.getAspect()
+        width = height * aspect
+        self.backgroundGradient.mesh.resize(2.1*width, 2.1*height)
+
+        self.backgroundGradient.setPosition([0, 0, -0.85*cam.farPlane])
+
     def loadMacroTargets(self):
         """
         Preload all target files belonging to group macrodetails and its child
@@ -596,13 +653,6 @@ class MHApplication(gui3d.Application, mh.Application):
     def loadFinish(self):
         #self.selectedHuman.callEvent('onChanged', events3d.HumanEvent(self.selectedHuman, 'reset'))
         self.selectedHuman.applyAllTargets()
-
-        self.prompt('Warning', 'MakeHuman is a character creation suite. It is designed for making anatomically correct humans.\nParts of this program may contain nudity.\nDo you want to proceed?', 'Yes', 'No', None, self.stop, 'nudityWarning')
-        # self.splash.hide()
-
-        if not self.args.get('noshaders', False) and \
-          ( not mh.Shader.supported() or mh.Shader.glslVersion() < (1,20) ):
-            self.prompt('Warning', 'Your system does not support OpenGL shaders (GLSL v1.20 required).\nOnly simple shading will be available.', 'Ok', None, None, None, 'glslWarning')
 
         self.currentFile.modified = False
 
@@ -657,15 +707,22 @@ class MHApplication(gui3d.Application, mh.Application):
 
         progress.step('Loading done')
 
-        log.message('')
+        log.message('') # Empty status indicator
 
         if sys.platform.startswith("darwin"):
             self.splash.resize(0,0) # work-around for mac splash-screen closing bug
 
+        self.mainwin.show()
         self.splash.hide()
         # self.splash.finish(self.mainwin)
         self.splash.close()
         self.splash = None
+
+        self.prompt('Warning', 'MakeHuman is a character creation suite. It is designed for making anatomically correct humans.\nParts of this program may contain nudity.\nDo you want to proceed?', 'Yes', 'No', None, self.stop, 'nudityWarning')
+
+        if not self.args.get('noshaders', False) and \
+          ( not mh.Shader.supported() or mh.Shader.glslVersion() < (1,20) ):
+            self.prompt('Warning', 'Your system does not support OpenGL shaders (GLSL v1.20 required).\nOnly simple shading will be available.', 'Ok', None, None, None, 'glslWarning')
 
         # Restore main window size and position
         if self.settings.get('restoreWindowSize', False):
@@ -683,8 +740,11 @@ class MHApplication(gui3d.Application, mh.Application):
 
         else: # After application is loaded
             if self.args.get('mhmFile', None):
-                mhmFile = self.args.get('mhmFile')
+                import getpath
+                mhmFile = getpath.pathToUnicode( self.args.get('mhmFile') )
                 log.message("Loading MHM file %s (as specified by commandline argument)", mhmFile)
+                if not os.path.isfile(mhmFile):
+                    mhmFile = getpath.findFile(mhmFile, mh.getPath("models"))
                 if os.path.isfile(mhmFile):
                     self.loadHumanMHM(mhmFile)
                 else:
@@ -711,7 +771,6 @@ class MHApplication(gui3d.Application, mh.Application):
         self.dumpMissingStrings()
 
     def onQuit(self, event):
-
         self.promptAndExit()
 
     def onMouseDown(self, event):
@@ -799,7 +858,10 @@ class MHApplication(gui3d.Application, mh.Application):
         with inFile("settings.ini") as f:
             if f:
                 settings = mh.parseINI(f.read())
-                self.settings.update(settings)
+
+                if 'version' in settings and settings['version'] == mh.getVersionDigitsStr():
+                    # Only load settings for this specific version
+                    self.settings.update(settings)
 
         if 'language' in self.settings:
             self.setLanguage(self.settings['language'])
@@ -863,7 +925,6 @@ class MHApplication(gui3d.Application, mh.Application):
 
     # Themes
     def setTheme(self, theme):
-
         # Disabling this check allows faster testing of a skin by reloading it.
         #if self.theme == theme:
         #    return
@@ -877,6 +938,10 @@ class MHApplication(gui3d.Application, mh.Application):
         log._logLevelColors[log.WARNING] = 'darkorange'
         log._logLevelColors[log.ERROR] = 'red'
         log._logLevelColors[log.CRITICAL] = 'red'
+        self.bgBottomLeftColor = [0.101, 0.101, 0.101]
+        self.bgBottomRightColor = [0.101, 0.101, 0.101]
+        self.bgTopLeftColor = [0.312, 0.312, 0.312]
+        self.bgTopRightColor = [0.312, 0.312, 0.312]
 
         f = open(os.path.join(mh.getSysDataPath("themes/"), theme + ".mht"), 'rU')
 
@@ -894,6 +959,14 @@ class MHApplication(gui3d.Application, mh.Application):
                         self.gridColor[:] = [float(val) for val in lineData[2:5]]
                     elif lineData[1] == "subgrid":
                         self.gridSubColor[:] = [float(val) for val in lineData[2:5]]
+                    elif lineData[1] == "bgbottomleft":
+                        self.bgBottomLeftColor[:] = [float(val) for val in lineData[2:5]]
+                    elif lineData[1] == "bgbottomright":
+                        self.bgBottomRightColor[:] = [float(val) for val in lineData[2:5]]
+                    elif lineData[1] == "bgtopleft":
+                        self.bgTopLeftColor[:] = [float(val) for val in lineData[2:5]]
+                    elif lineData[1] == "bgtopright":
+                        self.bgTopRightColor[:] = [float(val) for val in lineData[2:5]]
                 elif lineData[0] == "logwindow_color":
                     logLevel = lineData[1]
                     if hasattr(log, logLevel) and isinstance(getattr(log, logLevel), int):
@@ -907,6 +980,11 @@ class MHApplication(gui3d.Application, mh.Application):
         if self.backplaneGrid:
             self.backplaneGrid.mesh.setMainColor(self.gridColor)
             self.backplaneGrid.mesh.setSubColor(self.gridSubColor)
+        if self.backgroundGradient:
+            self.backgroundGradient.mesh.setColors(self.bgBottomLeftColor, 
+                                                   self.bgBottomRightColor, 
+                                                   self.bgTopRightColor, 
+                                                   self.bgTopLeftColor)
         mh.setClearColor(self.clearColor[0], self.clearColor[1], self.clearColor[2], 1.0)
 
         if update_log:
@@ -1022,6 +1100,7 @@ class MHApplication(gui3d.Application, mh.Application):
 
         if self.splash:
             self.splash.setProgress(value)
+            self.splash.raise_()
 
         if self.progressBar is None:
             return
@@ -1031,10 +1110,14 @@ class MHApplication(gui3d.Application, mh.Application):
         else:
             self.progressBar.setProgress(value)
 
+        self.mainwin.canvas.blockRedraw = True
+
         # Process all non-user-input events in the queue to run callAsync tasks.
         # This is invoked here so events are processed in every step during the
         # onStart() init sequence.
         self.processEvents()
+
+        self.mainwin.canvas.blockRedraw = False
 
     # Global dialog
     def prompt(self, title, text, button1Label, button2Label=None, button1Action=None, button2Action=None, helpId=None, fmtArgs = None):
@@ -1046,6 +1129,12 @@ class MHApplication(gui3d.Application, mh.Application):
             self.dialog = gui.Dialog(self.mainwin)
             self.dialog.helpIds.update(self.helpIds)
         return self.dialog.prompt(title, text, button1Label, button2Label, button1Action, button2Action, helpId, fmtArgs)
+
+    def about(self):
+        """
+        Show about dialog
+        """
+        gui.QtGui.QMessageBox.about(self.mainwin, 'About MakeHuman', mh.getCopyrightMessage())
 
     def setGlobalCamera(self):
         human = self.selectedHuman
@@ -1268,6 +1357,16 @@ class MHApplication(gui3d.Application, mh.Application):
     def toggleSubdivision(self):
         self.selectedHuman.setSubdivided(self.actions.smooth.isChecked(), True)
         self.redraw()
+
+    def togglePose(self):
+        self.selectedHuman.setPosed(self.actions.pose.isChecked())
+        self.redraw()
+
+    def toggleGrid(self):
+        if self.backplaneGrid and self.groundplaneGrid:
+            self.backplaneGrid.setVisibility( self.actions.grid.isChecked() )
+            self.groundplaneGrid.setVisibility( self.actions.grid.isChecked() )
+            self.redraw()
 
     def symmetryRight(self):
         human = self.selectedHuman
@@ -1502,6 +1601,8 @@ class MHApplication(gui3d.Application, mh.Application):
 
         self.actions.smooth    = action('smooth',    self.getLanguageString('Smooth'),        self.toggleSubdivision, toggle=True)
         self.actions.wireframe = action('wireframe', self.getLanguageString('Wireframe'),     self.toggleSolid, toggle=True)
+        self.actions.pose      = action('pose', self.getLanguageString('Pose'),               self.togglePose,  toggle=True)
+        self.actions.grid      = action('grid', self.getLanguageString('Grid'),               self.toggleGrid,  toggle=True)
 
 
         # 4 - Symmetry toolbar
@@ -1559,6 +1660,8 @@ class MHApplication(gui3d.Application, mh.Application):
 
         self.splash = gui.SplashScreen(gui3d.app.getThemeResource('images', 'splash.png'), mh.getVersionDigitsStr())
         self.splash.show()
+        if sys.platform != 'darwin':
+            self.mainwin.hide()  # Fix for OSX crash thanks to Francois (issue #593)
 
         self.tabs = self.mainwin.tabs
 

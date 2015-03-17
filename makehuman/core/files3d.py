@@ -12,7 +12,7 @@ Modules to handle supported 3D file formats.
 
 **Authors:**           Manuel Bastioni, Marc Flerackers
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -113,6 +113,7 @@ def saveBinaryMesh(obj, path):
         vars_['fuvs']  = obj.fuvs
 
     np.savez_compressed(path, **vars_)
+    os.utime(path, None)  # Ensure modification time is updated
 
 def loadBinaryMesh(obj, path):
     log.debug("Loading binary mesh %s.", path)

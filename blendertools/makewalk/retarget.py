@@ -23,7 +23,7 @@
 # Product Home Page:   http://www.makehuman.org/
 # Code Home Page:      https://bitbucket.org/MakeHuman/makehuman/
 # Authors:             Thomas Larsson
-# Script copyright (C) MakeHuman Team 2001-2014
+# Script copyright (C) MakeHuman Team 2001-2015
 # Coding Standards:    See http://www.makehuman.org/node/165
 
 #
@@ -187,11 +187,11 @@ class CBoneAnim:
     def getTPoseMatrix(self):
         self.aMatrix =  self.srcBone.matrix.inverted() * self.trgBone.matrix
         if not isRotationMatrix(self.trgBone.matrix):
-            halt
+            raise RuntimeError("Target %s not rotation matrix %s" % (self.trgBone.name, self.trgBone.matrix))
         if not isRotationMatrix(self.srcBone.matrix):
-            halt
+            raise RuntimeError("Source %s not rotation matrix %s" % (self.srcBone.name, self.srcBone.matrix))
         if not isRotationMatrix(self.aMatrix):
-            halt
+            raise RuntimeError("A %s not rotation matrix %s" % (self.trgBone.name, self.aMatrix.matrix))
 
 
     def retarget(self, frame):
@@ -326,7 +326,7 @@ def retargetAnimation(context, srcRig, trgRig):
 
     startProgress("Retargeting")
     scn = context.scene
-    setMhxIk(trgRig, True, True, False)
+    setMhxIk(trgRig, True, True, 0.0)
     frames = getActiveFrames(srcRig)
     nFrames = len(frames)
     scn.objects.active = trgRig
@@ -335,7 +335,7 @@ def retargetAnimation(context, srcRig, trgRig):
     scn.update()
 
     if isRigify(trgRig):
-        setRigifyFKIK(trgRig, 0)
+        setRigifyFKIK(trgRig, 0.0)
 
     try:
         scn.frame_current = frames[0]
@@ -514,6 +514,7 @@ class VIEW3D_OT_NewRetargetMhxButton(bpy.types.Operator):
         scn = context.scene
         data = changeTargetData(trgRig, scn)
         rigList = list(context.selected_objects)
+
         try:
             target.getTargetArmature(trgRig, scn)
             for srcRig in rigList:
@@ -542,6 +543,10 @@ class VIEW3D_OT_LoadAndRetargetButton(bpy.types.Operator, ImportHelper):
     filename_ext = ".bvh"
     filter_glob = StringProperty(default="*.bvh", options={'HIDDEN'})
     filepath = StringProperty(name="File Path", description="Filepath used for importing the BVH file", maxlen=1024, default="")
+
+    @classmethod
+    def poll(self, context):
+        return (context.object and context.object.type == 'ARMATURE')
 
     def execute(self, context):
         if self.problems:

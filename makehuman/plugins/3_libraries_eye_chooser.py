@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson, Marc Flerackers
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -44,7 +44,7 @@ import proxychooser
 class EyesTaskView(proxychooser.ProxyChooserTaskView):
 
     def __init__(self, category):
-        super(EyesTaskView, self).__init__(category, 'eyes')
+        super(EyesTaskView, self).__init__(category, 'eyes', tagFilter = True, descriptionWidget = False)
 
     def getObjectLayer(self):
         #return 3
@@ -62,13 +62,12 @@ class EyesTaskView(proxychooser.ProxyChooserTaskView):
             gui3d.app.setFaceCamera()
 
     def onHumanChanged(self, event):
+        super(EyesTaskView, self).onHumanChanged(event)
         if event.change == 'reset':
             # Load initial eyes
             self.selectProxy(mh.getSysDataPath("eyes/high-poly/high-poly.mhclo"))
             # Reset default material on eyes (in case it was changed)
             self.getObjects()[0].material = self.getSelection()[0].material
-            return
-        super(EyesTaskView, self).onHumanChanged(event)
 
 
 # This method is called when the plugin is loaded into makehuman

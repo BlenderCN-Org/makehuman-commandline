@@ -10,9 +10,9 @@ MakeHuman python entry-point.
 
 **Code Home Page:**    https://bitbucket.org/MakeHuman/makehuman/
 
-**Authors:**           Glynn Clements, Joel Palmius, Jonas Hauquier
+**Authors:**           Manuel Bastioni, Glynn Clements, Jonas Hauquier, Joel Palmius
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -46,7 +46,7 @@ import re
 import subprocess
 
 ## Version information #########################################################
-version = [1, 1, 0]                     # Major, minor and patch version number
+__version__ = "1.1.0"                   # Major, minor and patch version number
 release = False                         # False for nightly
 versionSub = ""                         # Short version description
 meshVersion = "hm08"                    # Version identifier of the basemesh
@@ -56,7 +56,7 @@ def getVersionDigitsStr():
     """
     String representation of the version number only (no additional info)
     """
-    return ".".join( [str(v) for v in version] )
+    return __version__
 
 def _versionStr():
     if versionSub:
@@ -82,7 +82,9 @@ def getVersion():
     """
     Comparable version as list of ints
     """
-    return version
+    return __version__.split('.')
+
+version = getVersion()  # For backward compat.
 
 def getVersionStr(verbose=True):
     """
@@ -141,6 +143,12 @@ def unicode(msg):
     except:
         pass
     try:
+        # Attempt using filesystem encoding
+        import sys
+        return __builtins__.unicode(msg, encoding=sys.getfilesystemencoding)
+    except:
+        pass
+    try:
         # Attempt to decode object's __str__ into unicode
         return str(msg).decode("utf-8", errors="replace")
     except:
@@ -165,7 +173,7 @@ def getHgRoot(subpath=''):
 def get_revision_hg_info():
     # Return local revision number of hg parent
     hgRoot = getHgRoot()
-    output = subprocess.Popen(["hg","-q","parent","--template","{rev}:{node|short}"], stdout=subprocess.PIPE, stderr=sys.stderr, cwd=hgRoot).communicate()[0]
+    output = subprocess.Popen(["hg","-q","parents","--template","{rev}:{node|short}"], stdout=subprocess.PIPE, stderr=sys.stderr, cwd=hgRoot).communicate()[0]
     output = output.strip().split(':')
     rev = output[0].strip().replace('+', '')
     revid = output[1].strip().replace('+', '')
@@ -242,13 +250,14 @@ def get_revision_file():
 
 def get_hg_revision_1():
     """
-    Retrieve (local) revision number and short nodeId for current tip.
+    Retrieve (local) revision number and short nodeId of current working dir
+    parent.
     """
     hgrev = None
 
     try:
         hgrev = get_revision_hg_info()
-        os.environ['HGREVISION_SOURCE'] = "hg tip command"
+        os.environ['HGREVISION_SOURCE'] = "hg parents command"
         os.environ['HGREVISION'] = str(hgrev[0])
         os.environ['HGNODEID'] = str(hgrev[1])
         if hgrev[2]:
@@ -279,7 +288,7 @@ def get_hg_revision_1():
 
     try:
         hgrev = get_revision_cache_tip()
-        os.environ['HGREVISION_SOURCE'] = ".hg cache file"
+        os.environ['HGREVISION_SOURCE'] = ".hg cache file tip"
         os.environ['HGREVISION'] = str(hgrev[0])
         os.environ['HGNODEID'] = str(hgrev[1])
         return hgrev
@@ -341,6 +350,10 @@ def set_sys_path():
     syspath = ["./", "./lib", "./apps", "./shared", "./apps/gui","./core"]
     syspath.extend(sys.path)
     sys.path = syspath
+
+    if isBuild():
+        # Make sure we load packaged DLLs instead of those present on the system
+        os.environ["PATH"] = '.' + os.path.pathsep + getCwd() + os.path.pathsep + os.environ["PATH"]
 
 stdout_filename = None
 stderr_filename = None
@@ -415,6 +428,7 @@ def parse_arguments():
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
+    parser.add_argument("--license", action="store_true", help="Show full copyright notice and software license")
 
     if ADVANCED_ARGS:
         # Output options
@@ -437,13 +451,174 @@ def parse_arguments():
 
     argOptions = vars(parser.parse_args())
 
+    if argOptions.get('license', False):
+        print "\n" + getCopyrightMessage() + "\n"
+        sys.exit(0)
+
     if ADVANCED_ARGS:
         humanargparser.validate(argOptions)
 
     return argOptions
 
+def getCopyrightMessage(short=False):
+    if short:
+        return """MakeHuman Copyright (C) 2001-2015 http://www.makehuman.org
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it
+under certain conditions. For details use the option --license"""
+
+    return """Makehuman is a completely free, open source, innovative and 
+professional software for the modelling of 3-Dimensional humanoid characters
+Copyright (C) 2001-2015  www.makehuman.org
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+MakeHuman's source code and its mesh data is distributed freely under 
+the AGPL3 license (see license.txt). Content created using the MakeHuman 
+application is released under the liberal CC0 license. For more details, 
+refer to these pages:
+
+    http://www.makehuman.org/doc/node/the_makehuman_application.html
+    http://www.makehuman.org/doc/node/makehuman_mesh_license.html
+
+Licenses for dependencies are included in the licenses folder.
+
+
+For further help, have a look at our documentation at 
+    http://www.makehuman.org/documentation
+Frequently asked questions are found at
+    http://www.makehuman.org/faq
+
+
+The MakeHuman team can be contacted at http://www.makehuman.org
+If you have other questions, feel free to ask them on our forums at 
+    http://www.makehuman.org/forum/
+Bugs can be reported on the project's bug tracker
+    http://bugtracker.makehuman.org
+"""
+
+def getAssetLicense(properties=None):
+    """
+    Retrieve the license information for MakeHuman assets.
+    If no custom properties are specified, the license object retrieved specifies
+    the licensing information that applies to the assets included in the
+    official MakeHuman release.
+    We consider assets to be the basemesh, targets, proxy definitions and their
+    fitting data, in general all the files in the data folder with the exclusion
+    of the data in the form as retained by the official exporters to which the
+    CC0 exception clause applies.
+    Assets created by third parties can be bound to different licensing conditions,
+    which is why properties can be set as a dict of format:
+        {"author": ..., "license": ..., "copyright": ..., "homepage": ...}
+    """
+    class LicenseInfo:
+        def __init__(self):
+            self.author = "MakeHuman Team"
+            self.license = "AGPL3 (see also http://www.makehuman.org/doc/node/external_tools_license.html)"
+            self.homepage = "http://www.makehuman.org"
+            self.copyright = "(c) MakeHuman.org 2001-2015"
+            self._keys = ["author", "license", "copyright", "homepage"]
+            self._customized = False
+
+        def setProperty(self, name, value):
+            if name in self._keys:
+                if getattr(self, name) != value:
+                    self._customized = True
+                    setattr(self, name, value)
+
+        def isCustomized(self):
+            return self._customized
+
+        def __str__(self):
+            return """MakeHuman asset license:
+    Author: %s
+    License: %s
+    Copyright: %s
+    Homepage: %s""" % (self.author, self.license, self.copyright, self.homepage)
+
+        def asDict(self):
+            return dict( [(pname, getattr(self, pname)) for pname in self._keys] )
+
+        def fromDict(self, propDict):
+            for prop,val in propDict.items():
+                self.setProperty(prop, val)
+            return self
+
+        def updateFromComment(self, commentLine):
+            commentLine = commentLine.strip()
+            if commentLine.startswith('#'):
+                commentLine = commentLine[1:]
+            elif commentLine.startswith('//'):
+                commentLine = commentLine[2:]
+            commentLine = commentLine.strip()
+
+            words = commentLine.split()
+            if len(words) < 1:
+                return
+
+            key = words[0]
+            value = " ".join(words[1:])
+
+            self.setProperty(key,value)
+
+        def toNumpyString(self):
+            def _packStringDict(stringDict):
+                import numpy as np
+                text = ''
+                index = []
+                for key,value in stringDict.items():
+                    index.append(len(key))
+                    index.append(len(value))
+                    text += key + value
+                text = np.fromstring(text, dtype='S1')
+                index = np.array(index, dtype=np.uint32)
+                return text, index
+
+            return _packStringDict(self.asDict())
+
+        def fromNumpyString(self, text, index=None):
+            def _unpackStringDict(text, index):
+                stringDict = dict()
+                last = 0
+                for i in range(0,len(index), 2):
+                    l_key = index[i]
+                    l_val = index[i+1]
+
+                    key = text[last:last+l_key].tostring()
+                    val = text[last+l_key:last+l_key+l_val].tostring()
+                    stringDict[key] = val
+
+                    last += (l_key + l_val)
+                return stringDict
+
+            if index is None:
+                text, index = text
+            return self.fromDict( _unpackStringDict(text, index) )
+
+
+    result = LicenseInfo()
+    if properties is not None:
+        result.fromDict(properties)
+        result._customized = False
+    return result
+
+
 def main():
     print "MakeHuman v%s" % getVersionDigitsStr()
+    print getCopyrightMessage(short=True) + "\n"
+
     try:
         set_sys_path()
         make_user_dir()

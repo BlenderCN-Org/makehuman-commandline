@@ -10,7 +10,7 @@
 
 **Authors:**           Thomas Larsson
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/external_tools_license.html)
 
@@ -39,7 +39,7 @@ Abstract
 bl_info = {
     "name": "Make Target",
     "author": "Thomas Larsson",
-    "version": (1,0,1),
+    "version": (1,1,0),
     "blender": (2,7,1),
     "location": "View3D > Properties > Make Target",
     "description": "Make MakeHuman Target",

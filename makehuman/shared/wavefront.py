@@ -12,7 +12,7 @@ Handles WaveFront .obj 3D mesh files.
 
 **Authors:**           Manuel Bastioni, Marc Flerackers, Jonas Hauquier
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -200,7 +200,7 @@ def writeObjFile(path, objects, writeMTL=True, config=None, filterMaskedFaces=Tr
     # UV vertices
     for mesh in meshes:
         if mesh.has_uv:
-            fp.write("".join( ["vt %.4f %.4f\n" % tuple(uv) for uv in mesh.texco] ))
+            fp.write("".join( ["vt %.6f %.6f\n" % tuple(uv) for uv in mesh.texco] ))
 
     # Faces
     nVerts = 1

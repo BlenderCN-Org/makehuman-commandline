@@ -10,7 +10,7 @@
 
 **Authors:**           Marc Flerackers, Jonas Hauquier, Glynn Clements
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -153,6 +153,7 @@ class BackgroundChooser(gui3d.TaskView):
                 m = None
 
             mesh = geometry3d.RectangleMesh(20, 20, centered=True, rotation=m)
+            mesh.name = "Background_%s" % viewName
             obj = gui3d.app.addObject(gui3d.Object(mesh, [0, 0, 0], visible=False))
             obj.setShadeless(True)
             obj.setDepthless(True)
@@ -441,7 +442,7 @@ class BackgroundChooser(gui3d.TaskView):
                 while img_filename and not any( [img_filename.lower().endswith(ex) for ex in self.extensions] ) and (len(values) - (i+2)) >= 5:
                     i += 1
                     img_filename = img_filename + ' ' + values[2+i]
-                img_filename = getpath.findFile(img_filename, self.backgroundsFolders, strict=True)
+                img_filename = getpath.thoroughFindFile(img_filename, self.backgroundsFolders)
                 aspect = float(values[3+i])
                 trans = (float(values[4+i]), float(values[5+i]))
                 scale = float(values[6+i])

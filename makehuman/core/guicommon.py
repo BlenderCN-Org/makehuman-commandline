@@ -10,7 +10,7 @@
 
 **Authors:**           Manuel Bastioni, Marc Flerackers
 
-**Copyright(c):**      MakeHuman Team 2001-2014
+**Copyright(c):**      MakeHuman Team 2001-2015
 
 **Licensing:**         AGPL3 (http://www.makehuman.org/doc/node/the_makehuman_application.html)
 
@@ -100,6 +100,9 @@ class Object(events3d.EventHandler):
 
         self.setUVMap(mesh.material.uvMap)
 
+    def __str__(self):
+        return "<guicommon.Object %s>" % self.name
+
     # TODO
     def clone(self):
         pass
@@ -165,6 +168,14 @@ class Object(events3d.EventHandler):
             self.mesh.setVisibility(1)
         else:
             self.mesh.setVisibility(0)
+
+    def getPriority(self):
+        return self.mesh.priority
+
+    def setPriority(self, priority):
+        self.mesh.priority = priority
+
+    priority = property(getPriority, setPriority)
 
     ##
     # Orientation properties
@@ -344,9 +355,9 @@ class Object(events3d.EventHandler):
     def getProxyMesh(self):
         return self.__proxyMesh
 
-    def updateProxyMesh(self):
+    def updateProxyMesh(self, fit_to_posed=False):
         if self.proxy and self.__proxyMesh:
-            self.proxy.update(self.__proxyMesh)
+            self.proxy.update(self.__proxyMesh, fit_to_posed)
             self.__proxyMesh.update()
 
     def isProxied(self):
@@ -378,7 +389,7 @@ class Object(events3d.EventHandler):
             for attr in ('visibility', 'pickable', 'cameraMode'):
                 setattr(self.__proxyMesh, attr, getattr(self.mesh, attr))
 
-            self.proxy.update(self.__proxyMesh)
+            self.updateProxyMesh()
 
             # Attach to GL object if this object is attached to viewport
             if self.__seedMesh.object3d:
@@ -389,6 +400,9 @@ class Object(events3d.EventHandler):
             self.mesh.setVisibility(1)
 
         self.setSubdivided(isSubdivided)
+
+    def getProxy(self):
+        return self.proxy
 
     def getSubdivisionMesh(self, update=True):
         """
