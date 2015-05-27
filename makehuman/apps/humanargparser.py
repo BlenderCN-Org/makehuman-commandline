@@ -177,32 +177,22 @@ def applyModelingArguments(human, argOptions):
 
     ### Macro properties
     if argOptions.get("age", None):
-        _selectivelyLoadModifiers(human)
-        human.setAgeYears(argOptions["age"])
+        human.setAgeYears(argOptions["age"], updateModifier=False)
     if argOptions.get("gender", None) is not None:
-        _selectivelyLoadModifiers(human)
-        human.setGender(argOptions["gender"])
+        human.setGender(argOptions["gender"], updateModifier=False)
     if argOptions.get("race", None) is not None:
         if argOptions["race"] == "caucasian":
-            _selectivelyLoadModifiers(human)
-            human.setCaucasian(0.9)
+            human.setCaucasian(0.9, updateModifier=False)
         elif argOptions["race"] == "african":
-            _selectivelyLoadModifiers(human)
-            human.setAfrican(0.9)
+            human.setAfrican(0.9, updateModifier=False)
         elif argOptions["race"] == "asian":
-            _selectivelyLoadModifiers(human)
-            human.setAsian(0.9)
+            human.setAsian(0.9, updateModifier=False)
         else:
             raise RuntimeError('Unknown race "%s" specified on commandline. Must be one of [caucasian, african, asian]' % argOptions["race"])
 
     ### Modifiers (can override some macro parameters set above)
     if argOptions.get("modifier", None) is not None:
-        alreadyLoaded = human.modifierNames
         for mName, value in argOptions["modifier"]:
-            if mName not in alreadyLoaded:
-                # Attempt to load missing modifiers without loading doubles
-                _selectivelyLoadModifiers(human)
-                alreadyLoaded = human.modifierNames
             try:
                 human.getModifier(mName).setValue(value)
             except:
