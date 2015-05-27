@@ -53,7 +53,7 @@ sys.path.append("./plugins")
 MhxConfig = (__import__("9_export_mhx", fromlist = ["MhxConfig"])).MhxConfig
 MHXExporter = (__import__("9_export_mhx", fromlist = ["mhx_main"])).mhx_main
 OBJExporter = (__import__("9_export_obj", fromlist = ["mh2obj"])).mh2obj
-import exportutils
+ObjConfig = (__import__("9_export_obj", fromlist = ["ObjConfig"])).ObjConfig
 
 
 class ConsoleApp():
@@ -96,7 +96,7 @@ def save(human, filepath):
         exportCfg.setHuman(human)
         MHXExporter.exportMhx(filepath, exportCfg)
     elif filepath.endswith("obj"):
-        exportCfg = exportutils.config.Config()
+        exportCfg = ObjConfig()
         exportCfg.setHuman(human)
         OBJExporter.exportObj(filepath, config=exportCfg)
     else :
