@@ -171,6 +171,8 @@ def applyModelingArguments(human, argOptions):
     Apply the commandline argument options parsed by argparse to the human.
     Does nothing if no advanced commandline args were specified.
     """
+    _selectivelyLoadModifiers(human)
+
     ### Macro properties
     if argOptions.get("age", None):
         _selectivelyLoadModifiers(human)
@@ -193,7 +195,6 @@ def applyModelingArguments(human, argOptions):
 
     ### Modifiers (can override some macro parameters set above)
     if argOptions.get("modifier", None) is not None:
-        modifiersChanged = False
         alreadyLoaded = human.modifierNames
         for mName, value in argOptions["modifier"]:
             if mName not in alreadyLoaded:
@@ -202,12 +203,12 @@ def applyModelingArguments(human, argOptions):
                 alreadyLoaded = human.modifierNames
             try:
                 human.getModifier(mName).setValue(value)
-                modifiersChanged = True
             except:
                 raise RuntimeError('No modifier named "%s" as specified by --modifier command. See --listmodifiers for list of acceptable options.' % mName)
-        # Update human
-        if modifiersChanged:
-            human.applyAllTargets()
+
+    # Update human
+    human.updateMacroModifiers()
+    human.applyAllTargets()
 
     ### Skeleton
     if argOptions.get("rig", None):
@@ -368,6 +369,7 @@ def _loadModifiers(human):
     """
     import humanmodifier
     modifiers = humanmodifier.loadModifiers(getpath.getSysDataPath('modifiers/modeling_modifiers.json'), human)
+    modifiers.extend(humanmodifier.loadModifiers(getpath.getSysDataPath('modifiers/measurement_modifiers.json'), human))
     return modifiers
 
 mods_loaded = False
@@ -379,7 +381,7 @@ def _selectivelyLoadModifiers(human):
     global mods_loaded
     if mods_loaded:
         return
-    modifiers = _loadModifiers(human=None)
+    modifiers = _loadModifiers(human)
     alreadyLoaded = human.modifierNames
     for m in modifiers:
         if m.fullName not in alreadyLoaded:
