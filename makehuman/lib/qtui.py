@@ -435,6 +435,7 @@ class Frame(QtGui.QMainWindow):
             self.setWindowIcon(QtGui.QIcon(getpath.getSysPath("icons/makehuman.png")))
 
         self.setAttribute(QtCore.Qt.WA_KeyCompression, False)
+        self.setAcceptDrops(True)
         self.resize(*size)
         
         # work-around for mac QT toolbar bug described in: https://bugreports.qt-project.org/browse/QTBUG-18567
@@ -622,6 +623,32 @@ class Frame(QtGui.QMainWindow):
         self.resize(geometry['width'], geometry['height'])
         self.move(geometry['x'], geometry['y'])
         self.windowState = set(geometry['state'])
+
+    def dragEnterEvent(self, event):
+        """Decide whether to accept files dragged into the MakeHuman window."""
+        if event.mimeData().hasUrls():
+            url = event.mimeData().urls()[0]
+            path = getpath.pathToUnicode(url.toLocalFile())
+            if os.path.splitext(path)[1].lower() == '.mhm':
+                event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        """Support drag and dropping .MHM files in the MakeHuman window to load
+        them"""
+        mime_data = event.mimeData()
+        if not mime_data.hasUrls():
+            return
+
+        url = mime_data.urls()[0]
+        path = getpath.pathToUnicode(url.toLocalFile())
+        if os.path.splitext(path)[1].lower() != '.mhm':
+            return
+
+        if self.app.currentFile.modified:
+            self.app.prompt("Load", "You have unsaved changes. Are you sure you want to close the current file?",
+                             "Yes", "No", lambda: self.app.loadHumanMHM(path))
+        else:
+            self.app.loadHumanMHM(path)
 
 
 class LogWindow(qtgui.ListView):

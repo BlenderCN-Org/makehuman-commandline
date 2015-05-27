@@ -43,6 +43,7 @@ import gui3d
 import log
 from collections import OrderedDict
 import filechooser as fc
+import filecache
 
 import skeleton
 import skeleton_drawing
@@ -53,7 +54,7 @@ import material
 import numpy as np
 import os
 
-REF_RIG_PATH = getpath.getSysDataPath('rigs/default.json')
+REF_RIG_PATH = getpath.getSysDataPath('rigs/default.mhskel')
 
 #------------------------------------------------------------------------------------------
 #   class SkeletonAction
@@ -79,20 +80,18 @@ class SkeletonAction(gui3d.Action):
 #   class SkeletonLibrary
 #------------------------------------------------------------------------------------------
 
-class SkeletonLibrary(gui3d.TaskView):
+class SkeletonLibrary(gui3d.TaskView, filecache.MetadataCacher):
 
     def __init__(self, category):
         gui3d.TaskView.__init__(self, category, 'Skeleton')
+        filecache.MetadataCacher.__init__(self, 'mhskel', 'skeleton_filecache.mhc')
         self.optionsSelector = None
-
-        self._skelFileCache = None
 
         self.systemRigs = mh.getSysDataPath('rigs')
         self.userRigs = os.path.join(mh.getPath(''), 'data', 'rigs')
         self.rigPaths = [self.userRigs, self.systemRigs]
         if not os.path.exists(self.userRigs):
             os.makedirs(self.userRigs)
-        self.extension = "rig"
 
         self.human = gui3d.app.selectedHuman
 
@@ -152,13 +151,14 @@ class SkeletonLibrary(gui3d.TaskView):
 
         self.filechooser = self.addRightWidget(fc.IconListFileChooser( \
                                                     self.paths,
-                                                    'json',
+                                                    'mhskel',
                                                     'thumb',
                                                     name='Rig presets',
                                                     notFoundImage = mh.getSysDataPath('notfound.thumb'), 
                                                     noneItem = True, 
                                                     doNotRecurse = True))
         self.filechooser.setIconSize(50,50)
+        self.filechooser.enableAutoRefresh(False)
 
         @self.filechooser.mhEvent
         def onFileSelected(filename):
@@ -182,9 +182,13 @@ class SkeletonLibrary(gui3d.TaskView):
 
         self.xray_mat = None
 
+        # the reference skeleton
+        log.message("Loading base reference skeleton.")
+        self.referenceRig = self.human.getBaseSkeleton()
+
     def onShow(self, event):
         gui3d.TaskView.onShow(self, event)
-        if gui3d.app.settings.get('cameraAutoZoom', True):
+        if gui3d.app.getSetting('cameraAutoZoom'):
             gui3d.app.setGlobalCamera()
 
         # Set X-ray material
@@ -199,11 +203,11 @@ class SkeletonLibrary(gui3d.TaskView):
             obj.material = self.xray_mat
 
         # Make sure skeleton is updated if human has changed
-        if self.human.getSkeleton():
-            self.drawSkeleton(self.human.getSkeleton())
-            self.human.refreshPose()
-            mh.redraw()
+        if self.human.skeleton:
+            self.drawSkeleton()
 
+        self.filechooser.refresh()
+        self.filechooser.selectItem(self.selectedRig)
 
     def onHide(self, event):
         gui3d.TaskView.onHide(self, event)
@@ -220,12 +224,8 @@ class SkeletonLibrary(gui3d.TaskView):
         log.debug("Loading skeleton from %s", filename)
         self.selectedRig = filename
 
-        if self.referenceRig is None:
-            log.message("Loading reference skeleton for weights remapping.")
-            self.referenceRig = skeleton.load(REF_RIG_PATH, self.human.meshData)
-
         if not filename:
-            if self.human.getSkeleton():
+            if self.human.skeleton:
                 # Unload current skeleton
                 self.human.setSkeleton(None)
 
@@ -241,8 +241,7 @@ class SkeletonLibrary(gui3d.TaskView):
             return
 
         if getpath.isSamePath(filename, REF_RIG_PATH):
-            skel = self.referenceRig.clone()
-            vertexWeights = self.referenceRig.getVertexWeights()
+            skel = self.referenceRig.createFromPose()
         else:
             # Load skeleton definition from options
             skel = skeleton.load(filename, self.human.meshData)
@@ -253,35 +252,34 @@ class SkeletonLibrary(gui3d.TaskView):
             log.message("Skeleton %s has %s weights per vertex.", skel.name, vertexWeights.getMaxNumberVertexWeights())
 
             # Remap bone orientation planes from reference rig
-            skel.addReferencePlanes(self.referenceRig)
+            skel.addReferencePlanes(self.referenceRig)  # Not strictly needed for the new way in which we determine bone normals
 
         # Update description
         descr = skel.description
         self.descrLbl.setText(descr)
         self.boneCountLbl.setTextFormat(["Bones",": %s"], skel.getBoneCount())
 
-        # (Re-)draw the skeleton (before setting skeleton on human so it is automatically re-posed)
-        self.drawSkeleton(skel)
-
         # Assign to human
         self.human.setSkeleton(skel)
+
+        # (Re-)draw the skeleton
+        self.drawSkeleton()
 
         self.filechooser.selectItem(filename)
 
 
-    def drawSkeleton(self, skel):
+    def drawSkeleton(self):
         if self.skelObj:
             # Remove old skeleton mesh
             self.removeObject(self.skelObj)
-            self.human.removeBoundMesh(self.skelObj.name)
             self.skelObj = None
             self.skelMesh = None
 
+        skel = self.human.getSkeleton()
         if not skel:
             return
 
-        # Create a mesh from the skeleton in rest pose
-        skel.setToRestPose() # Make sure skeleton is in rest pose when constructing the skeleton mesh
+        # Create a mesh from the skeleton
         self.skelMesh = skeleton_drawing.meshFromSkeleton(skel, "Prism")
         self.skelMesh.priority = 100
         self.skelMesh.setPickable(False)
@@ -290,79 +288,17 @@ class SkeletonLibrary(gui3d.TaskView):
         self.skelObj.setSolid(0)
         self.skelObj.setRotation(self.human.getRotation())
 
-        # Add the skeleton mesh to the human AnimatedMesh so it animates together with the skeleton
-        # The skeleton mesh is supposed to be constructed from the skeleton in rest and receives
-        # rigid vertex-bone weights (for each vertex exactly one weight of 1 to one bone)
-        mapping = skeleton_drawing.getVertBoneMapping(skel, self.skelMesh)
-        self.human.addBoundMesh(self.skelMesh, mapping)
-
         mh.redraw()
 
-    def getTags(self, filename=None):
-        import filecache
-        def _getSkeletonTags(filename):
-            return skeleton.peekMetadata(filename)
+    def getMetadataImpl(self, filename):
+        return skeleton.peekMetadata(filename)
 
-        if self._skelFileCache is None:
-            # Init cache
-            self.loadCache()
-            self._skelFileCache = filecache.updateFileCache(self.paths, 'mhmat', _getSkeletonTags,self._skelFileCache, False)
+    def getTagsFromMetadata(self, metadata):
+        name, desc, tags = metadata
+        return tags
 
-        # TODO move most of this (duplicated) logic inside a class in filecache
-        result = set()
-
-        if filename:
-            fileId = getpath.canonicalPath(filename)
-            if fileId not in self._skelFileCache:
-                # Lazily update cache
-                self._skelFileCache = filecache.updateFileCache(self.paths + [os.path.dirname(fileId)], 'json', _getSkeletonTags,self._skelFileCache, False)
-
-            if fileId in self._skelFileCache:
-                metadata = self._skelFileCache[fileId]
-                if metadata is not None:
-                    mtime, name, desc, tags = metadata
-
-                    if mtime < os.path.getmtime(fileId):
-                        # Queried file was updated, update stale cache
-                        self._skelFileCache = filecache.updateFileCache(self.paths + [os.path.dirname(fileId)], 'json', _getSkeletonTags,self._skelFileCache, False)
-                        metadata = self._skelFileCache[fileId]
-                        mtime, name, desc, tags = metadata
-
-                    result = result.union(tags)
-            else:
-                log.warning('Could not get tags for material file %s. Does not exist in Material library.', filename)
-            return result
-        else:
-            for (path, values) in self._skelFileCache.items():
-                _, name, desc, tags = values
-                result = result.union(tags)
-        return result
-
-    def onUnload(self):
-        """
-        Called when this library taskview is being unloaded (usually when MH
-        is exited).
-        Note: make sure you connect the plugin's unload() method to this one!
-        """
-        self.storeCache()
-
-    def storeCache(self):
-        import filecache
-        if self._skelFileCache is None or len(self._skelFileCache) == 0:
-            return
-
-        filecache.cleanupCache(self._skelFileCache)
-
-        cachedir = getpath.getPath('cache')
-        if not os.path.isdir(cachedir):
-            os.makedirs(cachedir)
-        filecache.saveCache(self._skelFileCache, os.path.join(cachedir, 'skeleton_filecache.mhc'))
-
-    def loadCache(self):
-        import filecache
-        filename = getpath.getPath('cache/skeleton_filecache.mhc')
-        if os.path.isfile(filename):
-            self._skelFileCache = filecache.loadCache(filename)
+    def getSearchPaths(self):
+        return self.paths
 
     def drawJointHelpers(self):
         """

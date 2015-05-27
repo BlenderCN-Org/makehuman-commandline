@@ -70,8 +70,12 @@ class Skeleton(object):
         self.scale = 1.0
 
     def _clear(self):
+        self.description = ""
+        self.version = "1"
+        self.license = makehuman.getAssetLicense()
+
         self.bones = {}     # Bone lookup list by name
-        self.boneslist = []  # Breadth-first ordered list of all bones
+        self.boneslist = None  # Breadth-first ordered list of all bones
         self.roots = []     # Root bones of this skeleton, a skeleton can have multiple root bones.
 
         self.joint_pos_idxs = {}  # Lookup by joint name referencing vertex indices on the human, to determine joint position
@@ -92,10 +96,11 @@ class Skeleton(object):
         skelData = json.load(open(filepath, 'rb'), object_pairs_hook=OrderedDict)
 
         self.name = skelData.get("name", self.name)
-        self.version = int(skelData.get("version", 1))
-        self.copyright = skelData.get("copyright", "")
-        self.description = skelData.get("description", "")
-        self.plane_map_strategy = int(skelData.get("plane_map_strategy", 3))
+        self.version = int(skelData.get("version", self.version))
+        self.description = skelData.get("description", self.description)
+        self.plane_map_strategy = int(skelData.get("plane_map_strategy", self.plane_map_strategy))
+
+        self.license.fromJson(skelData)
 
         for joint_name, v_idxs in skelData.get("joints", dict()).items():
             if isinstance(v_idxs, list) and len(v_idxs) > 0:
@@ -129,6 +134,57 @@ class Skeleton(object):
             weights_file = getpath.thoroughFindFile(weights_file, os.path.dirname(getpath.canonicalPath(filepath)), True)
 
             self.vertexWeights = VertexBoneWeights.fromFile(weights_file, mesh.getVertexCount() if mesh else None, rootBone=self.roots[0].name)
+
+    def toFile(self, filename, ref_weights=None):
+        """
+        Export skeleton and its weights to JSON.
+        Specify ref_weights (the weights of the default or reference rig
+        for vertices of the basemesh) if this is an arbitrary skeleton
+        and its weights were not mapped yet.
+        """
+        import json
+        from collections import OrderedDict
+        import os
+
+        fn = os.path.splitext(os.path.basename(filename))[0]
+        weights_file = "%s_weights.mhw" % fn
+
+        jsondata = OrderedDict({ "name": self.name,
+                                 "version": self.version,
+                                 "description": self.description,
+                                 "plane_map_strategy": self.plane_map_strategy,
+                               })
+        jsondata.update(self.license.asDict())
+
+        jsondata["weights_file"] = weights_file
+
+        bones = OrderedDict()
+        for bone in self.getBones():
+            bonedef = {"head": bone.headJoint,
+                       "tail": bone.tailJoint,
+                      }
+            if bone.reference_bones:
+                bonedef["reference"] = bone.reference_bones
+            if bone.parent:
+                bonedef["parent"] = bone.parent.name
+            if bone.roll:
+                bonedef["rotation_plane"] = bone.roll
+            if bone.weight_reference_bones != bone.reference_bones:
+                bonedef["weights_reference"] = bone.weight_reference_bones
+
+            bones[bone.name] = bonedef
+        jsondata["bones"] = bones
+
+        jsondata["joints"] = self.joint_pos_idxs
+        jsondata["planes"] = self.planes
+
+        f = open(filename, 'w')
+        json.dump(jsondata, f, indent=4, separators=(',', ': '))
+        f.close()
+
+        # Save weights
+        weights = self.getVertexWeights(ref_weights)
+        weights.toFile(os.path.join(os.path.dirname(filename), weights_file))
 
     def getVertexWeights(self, referenceWeights=None):
         """
@@ -364,24 +420,35 @@ class Skeleton(object):
         """
         Create a scaled clone of this skeleton
         """
+        from core import G
+
         result = type(self)(self.name)
         result.joint_pos_idxs = dict(self.joint_pos_idxs)
         result.vertexWeights = self.vertexWeights
         result.scale = scale
         result.version = self.version
-        result.copyright = self.copyright
+        result.license = self.license.copy()
         result.description = self.description
         result.planes = dict(self.planes)
 
         for bone in self.getBones():
             parentName = bone.parent.name if bone.parent else None
-            rbone = result.addBone(bone.name, parentName, bone.headJoint, bone.tailJoint, bone.roll, bone.reference_bones)
+            rbone = result.addBone(bone.name, parentName, bone.headJoint, bone.tailJoint, bone.roll, bone.reference_bones, bone._weight_reference_bones)
             rbone.matPose = bone.matPose.copy()
             rbone.matPose[:3,3] *= scale
 
-        result.build()
+        # Fit joint positions to that of original skeleton
+        human = G.app.selectedHuman
+        result.updateJoints(human.meshData, ref_skel=self)  # copy bone normals from self
 
         return result
+
+    def transformed(self, transform_mat):
+        """Create a clone of this skeleton with its joint locations transformed
+        with the specified transformation matrix.
+        """
+        # TODO perhaps use this instead of using scaled() and the "meshOrientation" arg in all getters used by exporters?
+        raise NotImplementedError()
 
     def createFromPose(self):
         """
@@ -394,6 +461,7 @@ class Skeleton(object):
 
         for bone in result.getBones():
             bone.rotateRest( self.getBone(bone.name).matPose )
+            bone.setToRestPose()
 
         return result
 
@@ -406,10 +474,14 @@ class Skeleton(object):
             self.roots.append(bone)
         return bone
 
-    def build(self):
+    def build(self, ref_skel=None):
+        """Rebuild bone rest matrices and determine local bone orientation
+        (roll or bone normal). Pass a ref_skel to copy the bone orientation from
+        the reference skeleton to the bones of this skeleton.
+        """
         self.__cacheGetBones()
         for bone in self.getBones():
-            bone.build()
+            bone.build(ref_skel)
 
     def update(self):
         """
@@ -418,15 +490,20 @@ class Skeleton(object):
         for bone in self.getBones():
             bone.update()
 
-    def updateJoints(self, humanMesh):
+    def updateJoints(self, humanMesh, ref_skel=None):
         """
         Update skeleton rest matrices to new joint positions after modifying
-        human.
+        human. For a base skeleton this should happen when the mesh is in rest
+        pose (but nothing prevents you from doing otherwise), for user-selected 
+        export skeletons this can be done in any pose.
+        Pass a ref_skel to copy its bone normals (see build).
+        When a reference skeleton is passed, we assume we don't need to fit the
+        joints to the basemesh rest pose coordinates, but to the posed ones.
         """
         for bone in self.getBones():
-            bone.updateJointPositions()
+            bone.updateJointPositions(in_rest=not ref_skel)
 
-        self.build()
+        self.build(ref_skel)
 
     def getBoneCount(self):
         return len(self.getBones())
@@ -506,6 +583,8 @@ class Skeleton(object):
         """
         Returns linear list of all bones in breadth-first order.
         """
+        if self.boneslist is None:
+            self.__cacheGetBones()
         return self.boneslist
 
     def __cacheGetBones(self):
@@ -600,6 +679,11 @@ class Bone(object):
             self.parent = None
 
         self.index = None   # The index of this bone in the breadth-first bone list
+        self.level = None   # The level in the hierarchy (number of parent levels)
+        if self.parent:
+            self.level = self.parent.level + 1
+        else:
+            self.level = 0
 
         self.reference_bones = []  # Used for mapping animations and poses
         if reference_bones is not None:
@@ -615,7 +699,7 @@ class Bone(object):
 
         # Matrices:
         # static
-        #  matRestGlobal:     4x4 rest matrix, relative world
+        #  matRestGlobal:     4x4 rest matrix, relative world (bind pose matrix)
         #  matRestRelative:   4x4 rest matrix, relative parent
         # posed
         #  matPose:           4x4 pose matrix, relative parent and own rest pose
@@ -632,20 +716,22 @@ class Bone(object):
     def planes(self):
         return self.skeleton.planes
 
-    def updateJointPositions(self, human=None):
+    def updateJointPositions(self, human=None, in_rest=True):
         """
-        Update the joint positions of this skeleton based on the current state
+        Update the joint positions of this bone based on the current state
         of the human mesh.
         Remember to call build() after calling this method.
         """
         if not human:
             from core import G
             human = G.app.selectedHuman
-        self.headPos[:] = self.skeleton.getJointPosition(self.headJoint, human)[:3] * self.skeleton.scale
-        self.tailPos[:] = self.skeleton.getJointPosition(self.tailJoint, human)[:3] * self.skeleton.scale
+        self.headPos[:] = self.skeleton.getJointPosition(self.headJoint, human, in_rest)[:3] * self.skeleton.scale
+        self.tailPos[:] = self.skeleton.getJointPosition(self.tailJoint, human, in_rest)[:3] * self.skeleton.scale
 
     def getRestMatrix(self, meshOrientation='yUpFaceZ', localBoneAxis='y', offsetVect=[0,0,0]):
         """
+        Global rest matrix for this bone
+
         meshOrientation: What axis points up along the model, and which direction
                          the model is facing.
             allowed values: yUpFaceZ (0), yUpFaceX (1), zUpFaceNegY (2), zUpFaceX (3)
@@ -688,10 +774,16 @@ class Bone(object):
     def __repr__(self):
         return ("  <Bone %s>" % self.name)
 
-    def build(self):
+    def build(self, ref_skel=None):
         """
-        Set matPoseVerts, matPoseGlobal and matRestRelative... TODO
-        needs to happen after changing skeleton structure
+        Calculate this bone's rest matrices and determine its local axis (roll
+        or bone normal).
+        Sets matPoseVerts, matPoseGlobal and matRestRelative.
+        This method needs to be called everytime the skeleton structure is
+        changed, the rest pose is changed or joint positions are updated.
+        Pass a ref_skel to copy the bone normals from a reference skeleton
+        instead of recalculating them (Recalculating bone normals generally
+        only works if the skeleton is in rest pose).
         """
         head3 = np.array(self.headPos[:3], dtype=np.float32)
         head4 = np.append(head3, 1.0)
@@ -700,6 +792,39 @@ class Bone(object):
         tail4 = np.append(head3, 1.0)
 
         # Update rest matrices
+        if ref_skel:
+            # Direct or reference bone-mapped copy of ref_skel's normals
+            normal = copy_normal(self, ref_skel)
+        else:
+            # Calculate normal from bone's plane definition
+            normal = self.get_normal()
+        self.matRestGlobal = getMatrix(head3, tail3, normal)
+        self.length = matrix.magnitude(tail3 - head3)
+        if self.parent:
+            self.matRestRelative = np.dot(la.inv(self.parent.matRestGlobal), self.matRestGlobal)
+        else:
+            self.matRestRelative = self.matRestGlobal
+
+        #vector4 = tail4 - head4
+        self.yvector4 = np.array((0, self.length, 0, 1))
+
+        # Update pose matrices
+        self.update()
+
+    def get_normal(self):
+        """The normal calculated for this bone. The normal is used as one of
+        the local axis for the bone to determine the local coordinate system 
+        for the bone (see getMatrix for details).
+        This normal is derived from the normal of a plane that is defined 
+        between three predefined joint positions. These joint positions are 
+        updated as the human is modified.
+        This approach generally works only for the human in rest pose, for bone
+        orientation in other poses, the normals should be first calculated in
+        rest pose, then the pose applied (on the base skeleton), which rotates
+        the calculated normals accordingly (createFromPose()). Then, if need be, 
+        this normal can be grabbed from the global rest matrix and remapped to
+        the bones of a different skeleton (see copy_normal).
+        """
         if isinstance(self.roll, list):
             # Average the normal over multiple planes
             count = 0
@@ -714,24 +839,13 @@ class Bone(object):
             else:
                 normal = np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
         elif isinstance(self.roll, basestring):
-            plane_name = self.roll  # TODO ugly..
+            plane_name = self.roll  # TODO ugly.. why not call this something else than "roll"?
             normal = get_normal(self.skeleton, plane_name, self.planes)
             if np.allclose(normal, np.zeros(3), atol=1e-05):
                 normal = np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
         else:
             normal = np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
-        self.matRestGlobal = getMatrix(head3, tail3, normal)
-        self.length = matrix.magnitude(tail3 - head3)
-        if self.parent:
-            self.matRestRelative = np.dot(la.inv(self.parent.matRestGlobal), self.matRestGlobal)
-        else:
-            self.matRestRelative = self.matRestGlobal
-
-        #vector4 = tail4 - head4
-        self.yvector4 = np.array((0, self.length, 0, 1))
-
-        # Update pose matrices
-        self.update()
+        return normal
 
     def update(self):
         """
@@ -994,6 +1108,15 @@ def fromZisUp4(mat):
 YUnit = np.array((0,1,0))
 
 def getMatrix(head, tail, normal):
+    """Generate a bone local rest matrix. The Y axis of the bone is the vector
+    between head and tail, the normal specified is used as X axis (or at least, 
+    a vector similar to the direction of normal, but perpendicular to Y).
+    Z is calculated as perpendicular on X and Y.
+    This method generates a local orthogonal base for the bone, originating in
+    the bone's head position, with Y axis along the length of the bone.
+    X is usually seen as the main rotation axis of the bone, Y indicates the 
+    main direction towards which the bone is rotated along the X axis.
+    """
     mat = np.identity(4, dtype=np.float32)
     bone_direction = tail - head
     bone_direction = matrix.normalize(bone_direction[:3])
@@ -1117,6 +1240,59 @@ def get_normal(skel, plane_name, plane_defs, human=None):
     pvec = matrix.normalize(p2-p1)
     yvec = matrix.normalize(p3-p2)
     return matrix.normalize(np.cross(yvec, pvec))
+
+def copy_normal(target_bone, ref_skel):
+    """Copy a normal (bone orientation) from a reference skeleton and map it to
+    the target_bone. This is used in the following scenario: calculate the
+    normals/orientations of the base skeleton in rest, apply a pose to the
+    base skeleton. Then, using this base skeleton with the pose transformed
+    into its rest pose (createFromPose) as ref_skel, the orientations can be
+    mapped/copied onto a different skeleton that is fit into the same pose
+    (With fitting we mean updating the rest pose joint positions so that they
+    fit inside a posed human mesh, posed by the base skeleton).
+
+    The reference bones defined for the target bone are used for getting to the
+    correct bone (or bones) of the base skeleton to copy the normal from. If
+    no reference bones are specified, it looks for a bone in the base skeleton
+    with the same name as the target bone (implicit mapping).
+    """
+
+    def _get_normal(bone):
+        """Grab the normal from a bone's global rest matrix. We assume that
+        this bone is in the same rest pose as the bone we want to map it to.
+        """
+        return bone.matRestGlobal[:3, 0].reshape(3)  # X axis
+
+    if ref_skel.name == target_bone.skeleton.name:
+        direct_copy = True  # No remapping is needed, the skeletons are the same
+    else:
+        direct_copy = False
+
+    if not direct_copy and len(target_bone.reference_bones) > 0:
+        if len(target_bone.reference_bones) == 1:
+            rbone = ref_skel.getBone(target_bone.reference_bones[0])
+            return _get_normal(rbone)
+        else:
+            normal = np.zeros(3, dtype=np.float32)
+            count = 0
+            for rbname in target_bone.reference_bones:
+                rbone = ref_skel.getBone(rbname)
+                norm = _get_normal(rbone)
+                if not np.allclose(norm, np.zeros(3), atol=1e-05):
+                    count += 1
+                    normal += norm
+            if count > 0 and not np.allclose(normal, np.zeros(3), atol=1e-05):
+                normal /= count
+            else:
+                normal = np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
+            return normal
+    else:
+        # Direct mapping: Try to map by bone name
+        if ref_skel.containsBone(target_bone.name):
+            return _get_normal(ref_skel.getBone(target_bone.name))
+        else:
+            log.warning("No normal found for bone %s: no reference bones and could not map implicitly by name", target_bone.name)
+            return np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
 
 def assertOrthogonal(mat):
     prod = np.dot(mat, mat.transpose())

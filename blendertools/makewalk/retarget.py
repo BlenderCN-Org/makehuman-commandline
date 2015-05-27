@@ -187,11 +187,11 @@ class CBoneAnim:
     def getTPoseMatrix(self):
         self.aMatrix =  self.srcBone.matrix.inverted() * self.trgBone.matrix
         if not isRotationMatrix(self.trgBone.matrix):
-            raise RuntimeError("Target %s not rotation matrix %s" % (self.trgBone.name, self.trgBone.matrix))
+            print("* WARNING *\nTarget %s not rotation matrix:\n%s" % (self.trgBone.name, self.trgBone.matrix))
         if not isRotationMatrix(self.srcBone.matrix):
-            raise RuntimeError("Source %s not rotation matrix %s" % (self.srcBone.name, self.srcBone.matrix))
+            print("* WARNING *\nSource %s not rotation matrix:\n%s" % (self.srcBone.name, self.srcBone.matrix))
         if not isRotationMatrix(self.aMatrix):
-            raise RuntimeError("A %s not rotation matrix %s" % (self.trgBone.name, self.aMatrix.matrix))
+            print("* WARNING *\nA %s not rotation matrix:\n%s" % (self.trgBone.name, self.aMatrix.matrix))
 
 
     def retarget(self, frame):
@@ -329,7 +329,7 @@ def retargetAnimation(context, srcRig, trgRig):
     setMhxIk(trgRig, True, True, 0.0)
     frames = getActiveFrames(srcRig)
     nFrames = len(frames)
-    scn.objects.active = trgRig
+    reallySelect(trgRig, scn)
     if trgRig.animation_data:
         trgRig.animation_data.action = None
     scn.update()
@@ -349,6 +349,7 @@ def retargetAnimation(context, srcRig, trgRig):
 
     target.ensureTargetInited(scn)
     boneAssoc = target.getTargetArmature(trgRig, scn)
+    disconnectHips(trgRig, boneAssoc)
     anim = CAnimation(srcRig, trgRig, boneAssoc, scn)
     anim.setTPose(scn)
 
@@ -375,6 +376,14 @@ def retargetAnimation(context, srcRig, trgRig):
     clearCategory()
     endProgress("Retargeted %s --> %s" % (srcRig.name, trgRig.name))
 
+
+def disconnectHips(rig, boneAssoc):
+    for bname,mname in boneAssoc:
+        if mname == "hips":
+            bpy.ops.object.mode_set(mode='EDIT')
+            rig.data.edit_bones[bname].use_connect = False
+            bpy.ops.object.mode_set(mode='POSE')
+            return
 
 #
 #   changeTargetData(rig, scn):

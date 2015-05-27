@@ -69,10 +69,7 @@ def exportFbx(filepath, config):
     skel = human.getSkeleton()
     if skel:
         if config.scale != 1:
-            skel = skel.scaled(config.scale)
-        if not skel.isInRestPose():
-            # Export skeleton with the current pose as rest pose
-            skel = skel.createFromPose()
+            skel = skel.scaled(config.scale)  # TODO perhaps create a skeleton.transformed() just like for mesh
 
     # Set mesh names
     for mesh in meshes:
@@ -102,11 +99,11 @@ def exportFbx(filepath, config):
 
     # Generate bone weights for all meshes up front so they can be reused for all
     if skel:
-        rawWeights = human.getVertexWeights()  # Basemesh weights
+        rawWeights = human.getVertexWeights(human.getSkeleton())  # Basemesh weights
         for mesh in meshes:
             if mesh.object.proxy:
                 # Transfer weights to proxy
-                parentWeights = mesh.object.proxy.getVertexWeights(rawWeights)
+                parentWeights = mesh.object.proxy.getVertexWeights(rawWeights, human.getSkeleton())
             else:
                 parentWeights = rawWeights
             # Transfer weights to face/vert masked and/or subdivided mesh

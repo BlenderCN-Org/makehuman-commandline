@@ -86,9 +86,6 @@ def exportCollada(filepath, config):
     if skel:
         if config.scale != 1:
             skel = skel.scaled(config.scale)
-        if not skel.isInRestPose():
-            # Export skeleton with the current pose as rest pose
-            skel = skel.createFromPose()
 
     # TODO a shared method for properly naming meshes would be a good idea
     for mesh in meshes:
@@ -143,7 +140,7 @@ def exportCollada(filepath, config):
             bvhfile = bvh.load(getpath.getSysDataPath('poseunits/face-poseunits.bvh'), allowTranslation="none")
             # TODO compensate for rest pose
             faceunit_anim = bvhfile.createAnimationTrack(skel, name="Expression-Face-PoseUnits")
-            animations = [faceunit_anim]
+            animations = [human.getAnimation(name) for name in human.getAnimations()] + [faceunit_anim]
             dae_animation.writeLibraryAnimations(fp, human, skel, animations, config)
 
         progress(0.75, 0.9, "Exporting geometry")

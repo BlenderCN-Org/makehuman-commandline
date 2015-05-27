@@ -47,6 +47,7 @@ import bvh
 import os
 from core import G
 import getpath
+import filecache
 
 class PoseAction(gui3d.Action):
     def __init__(self, name, library, before, after):
@@ -64,11 +65,13 @@ class PoseAction(gui3d.Action):
         return True
 
 
-# TODO add save/load handlers
-class PoseLibraryTaskView(gui3d.TaskView):
+class PoseLibraryTaskView(gui3d.TaskView, filecache.MetadataCacher):
 
     def __init__(self, category):
         gui3d.TaskView.__init__(self, category, 'Pose')
+        filecache.MetadataCacher.__init__(self, ['bvh'], 'pose_filecache.mhc')
+        self.cache_format_version = '1c'  # Bump cacher version for updated format of pose metadata
+
         self.human = G.app.selectedHuman
         self.currentPose = None
 
@@ -82,15 +85,54 @@ class PoseLibraryTaskView(gui3d.TaskView):
         def onFileSelected(filename):
             gui3d.app.do(PoseAction("Change pose", self, self.currentPose, filename))
 
-        box = self.addLeftWidget(gui.GroupBox('Pose'))
+        self.filechooser.setFileLoadHandler(fc.TaggedFileLoader(self))
+        self.addLeftWidget(self.filechooser.createTagFilter())
 
         self.skelObj = None
 
-    def loadPose(self, filepath, apply_pose=True):
-        if not self.human.getSkeleton():
-            log.error("No skeleton selected, cannot load pose")
-            return
+    def getMetadataFile(self, filename):
+        metafile = os.path.splitext(filename)[0] + '.meta'
+        if os.path.isfile(metafile):
+            return metafile
+        return filename
 
+    def getMetadataImpl(self, filename):
+        tags = set()
+        if not os.path.isfile(filename):
+            return (tags, )
+        name = os.path.splitext(os.path.basename(filename))[0]
+        description = ""
+        license = mh.getAssetLicense()
+        from codecs import open
+        f = open(filename, encoding='utf-8')
+        for l in f.read().split('\n'):
+            l = l.strip()
+            l = l.split()
+            if len(l) == 0:
+                continue
+            if l[0].lower() == 'tag':
+                tags.add((' '.join(l[1:])).lower())
+            elif l[0].lower() == 'name':
+                name = ' '.join(l[1:])
+            elif l[0].lower() == 'description':
+                description = ' '.join(l[1:])
+            elif l[0].lower() == 'author':
+                license.author = ' '.join(l[1:])
+            elif l[0].lower() == 'license':
+                license.license = ' '.join(l[1:])
+            elif l[0].lower() == 'copyright':
+                license.copyright = ' '.join(l[1:])
+            elif l[0].lower() == 'homepage':
+                license.homepage = ' '.join(l[1:])
+        return (tags, name, description, license)
+
+    def getTagsFromMetadata(self, metadata):
+        return metadata[0]
+
+    def getSearchPaths(self):
+        return self.paths
+
+    def loadPose(self, filepath, apply_pose=True):
         self.currentPose = filepath
 
         if not filepath:
@@ -113,12 +155,15 @@ class PoseLibraryTaskView(gui3d.TaskView):
             self.human.setPosed(True)
 
     def loadMhp(self, filepath):
-        return animation.loadPoseFromMhpFile(filepath, self.human.getSkeleton())
+        return animation.loadPoseFromMhpFile(filepath, self.human.getBaseSkeleton())
 
     def loadBvh(self, filepath, convertFromZUp="auto"):
         bvh_file = bvh.load(filepath, convertFromZUp)
         self.autoScaleBVH(bvh_file)
-        return bvh_file.createAnimationTrack(self.human.getSkeleton())
+        anim = bvh_file.createAnimationTrack(self.human.getBaseSkeleton())
+        _, _, _, license = self.getMetadata(filepath)
+        anim.license = license
+        return anim
 
     def autoScaleBVH(self, bvh_file):
         """
@@ -129,35 +174,22 @@ class PoseLibraryTaskView(gui3d.TaskView):
         if COMPARE_BONE not in bvh_file.joints:
             raise RuntimeError('Failed to auto scale BVH file %s, it does not contain a joint for "%s"' % (bvh_file.name, COMPARE_BONE))
         bvh_joint = bvh_file.joints[COMPARE_BONE]
-        bone = self.human.getSkeleton().getBoneByReference(COMPARE_BONE)
+        bone = self.human.getBaseSkeleton().getBoneByReference(COMPARE_BONE)
         if bone is not None:
             joint_length = la.norm(bvh_joint.children[0].position - bvh_joint.position)
             scale_factor = bone.length / joint_length
             log.message("Scaling BVH file %s with factor %s" % (bvh_file.name, scale_factor))
             bvh_file.scale(scale_factor)
         else:
-            log.warning("Could not find bone or bone reference with name %s in skeleton %s, cannot auto resize BVH file %s", COMPARE_BONE, self.human.getSkeleton().name, bvh_file.name)
+            log.warning("Could not find bone or bone reference with name %s in skeleton %s, cannot auto resize BVH file %s", COMPARE_BONE, self.human.getBaseSkeleton().name, bvh_file.name)
 
     def onShow(self, event):
         self.filechooser.refresh()
         self.filechooser.selectItem(self.currentPose)
-        self.drawSkeleton(self.human.getSkeleton())
         self.human.refreshPose()
 
     def onHide(self, event):
         gui3d.app.statusPersist('')
-
-    def drawSkeleton(self, skel):
-        if self.skelObj:
-            # Remove old skeleton mesh
-            self.removeObject(self.skelObj)
-            self.human.removeBoundMesh(self.skelObj.name)
-            self.skelObj = None
-            self.skelMesh = None
-            self.selectedBone = None
-
-        if not skel:
-            return
 
     def onHumanChanging(self, event):
         if event.change == 'reset':
@@ -166,8 +198,6 @@ class PoseLibraryTaskView(gui3d.TaskView):
 
     def onHumanChanged(self, event):
         if event.change == 'skeleton':
-            if self.isShown():
-                self.drawSkeleton(self.human.getSkeleton())
             if self.currentPose:
                 self.loadPose(self.currentPose, apply_pose=False)
         elif event.change == 'reset':
@@ -186,7 +216,7 @@ class PoseLibraryTaskView(gui3d.TaskView):
             return
 
     def saveHandler(self, human, file):
-        if human.getSkeleton() and self.currentPose:
+        if self.currentPose:
             poseFile = getpath.getRelativePath(self.currentPose, self.paths)
             file.write('pose %s\n' % poseFile)
 
@@ -199,6 +229,7 @@ taskview = None
 
 
 def load(app):
+    global taskview
     category = app.getCategory('Pose/Animate')
     taskview = PoseLibraryTaskView(category)
     taskview.sortOrder = 2
@@ -213,4 +244,4 @@ def load(app):
 
 
 def unload(app):
-    pass
+    taskview.onUnload()

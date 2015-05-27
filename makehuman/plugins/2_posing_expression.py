@@ -83,7 +83,7 @@ class ExpressionSlider(gui.Slider):
         value = self.changing
         self.changing = None
 
-        if G.app.settings.get('realtimeUpdates', True):
+        if G.app.getSetting('realtimeUpdates'):
             human = G.app.selectedHuman
             if self.value is None:
                 self.value = self.modifier.getValue()
@@ -93,7 +93,7 @@ class ExpressionSlider(gui.Slider):
                     else:
                         human.getSeedMesh().setVisibility(1)
                     human.getSubdivisionMesh(False).setVisibility(0)
-            self.modifier.updateValue(value, G.app.settings.get('realtimeNormalUpdates', True))
+            self.modifier.updateValue(value, G.app.getSetting('realtimeNormalUpdates'))
             human.updateProxyMesh(fit_to_posed=True)
 
 
@@ -130,7 +130,7 @@ class ExpressionSlider(gui.Slider):
 
     def onFocus(self, event):
         if self.view:
-            if G.app.settings.get('cameraAutoZoom', True):
+            if G.app.getSetting('cameraAutoZoom'):
                 self.view()
 
     def update(self):
@@ -268,16 +268,13 @@ class ExpressionTaskView(gui3d.TaskView):
     def onShow(self, event):
         gui3d.TaskView.onShow(self, event)
 
-        if not self.human.getSkeleton():
-            return
-
-        anim = self.base_bvh.createAnimationTrack(self.human.getSkeleton(), name="Expression-Face-PoseUnits")
+        anim = self.base_bvh.createAnimationTrack(self.human.getBaseSkeleton(), name="Expression-Face-PoseUnits")
         log.message('unit pose frame count:%s', len(self.poseunit_names))
         self.base_poseunit = animation.PoseUnit(anim.name, anim.data[:anim.nBones*len(self.poseunit_names)], self.poseunit_names)
 
         self.updateGui()
 
-        if gui3d.app.settings.get('cameraAutoZoom', True):
+        if gui3d.app.getSetting('cameraAutoZoom'):
             gui3d.app.setFaceCamera()
 
 

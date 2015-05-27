@@ -50,10 +50,12 @@ import codecs
 import transformations
 import log
 
+# TODO support different mesh orientations, scale and different bone local axis
+
 def exportOgreMesh(filepath, config):
     progress = Progress.begin()
 
-    progress(0, 0.05, "Setting properties")  # TODO this leads to a disastrous amount of confusion among translators 
+    progress(0, 0.05, "Preparing export")
     human = config.human
 
     # TODO account for config.scale in skeleton
@@ -84,6 +86,9 @@ def writeMeshFile(human, filepath, objects, config):
     lines.append('<!-- Exported from MakeHuman (www.makehuman.org) -->')
     lines.append('<mesh>')
     lines.append('    <submeshes>')
+
+    if human.getSkeleton():
+        bodyWeights = human.getVertexWeights(human.getSkeleton())
 
     for objIdx, obj in enumerate(objects):
         loopprog = Progress()
@@ -163,10 +168,9 @@ def writeMeshFile(human, filepath, objects, config):
 
         # Skeleton bone assignments
         if human.getSkeleton():
-            bodyWeights = human.getVertexWeights()
             if pxy:
                 # Determine vertex weights for proxy (map to unfiltered proxy mesh)
-                weights = pxy.getVertexWeights(bodyWeights)
+                weights = pxy.getVertexWeights(bodyWeights, human.getSkeleton())
             else:
                 # Use vertex weights for human body
                 weights = bodyWeights
@@ -220,9 +224,6 @@ def writeSkeletonFile(human, filepath, config):
     skel = human.getSkeleton()
     if config.scale != 1:
         skel = skel.scaled(config.scale)
-    if not skel.isInRestPose():
-        # Export skeleton with the current pose as rest pose
-        skel = skel.createFromPose()
 
     f = codecs.open(filepath, 'w', encoding="utf-8")
     lines = []
@@ -334,6 +335,7 @@ def writeMaterialFile(human, filepath, objects, config):
     f.close()
 
 def writeAnimation(human, linebuffer, animTrack, config):
+    # TODO animations need to be adapted to rest pose and retargeted to user skeleton
     import numpy as np
     progress = Progress(len(human.getSkeleton().getBones()))
     log.message("Exporting animation %s.", animTrack.name)

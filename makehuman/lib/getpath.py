@@ -57,7 +57,11 @@ def pathToUnicode(path):
     elif isinstance(path, basestring):
         return path.decode(sys.getfilesystemencoding())
     else:
-        return path
+        try:
+            # Works eg. for QString objects
+            return unicode(path, sys.getfilesystemencoding())
+        except:
+            return path
 
 def formatPath(path):
     if path is None:

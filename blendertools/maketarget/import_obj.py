@@ -79,7 +79,6 @@ def importBaseMhclo(context, filepath=None):
     ob.ObjFile = mh.proxy.obj_file
     ob.MhHuman = True
     print("Base object imported")
-    print(mh.proxy)
     return ob
 
 
@@ -89,7 +88,6 @@ def importBaseMhclo(context, filepath=None):
 #----------------------------------------------------------
 
 def importObj(filepath, context, addBasisKey=True):
-    global BMeshAware
     scn = context.scene
     obname = utils.nameFromPath(filepath)
     fp = open(filepath, "rU")
@@ -145,19 +143,8 @@ def importObj(filepath, context, addBasisKey=True):
     me.update()
     ob = bpy.data.objects.new(obname, me)
 
-    try:
-        me.polygons
-        BMeshAware = True
-        print("Using BMesh")
-    except:
-        BMeshAware = False
-        print("Not using BMesh")
-
     if texverts:
-        if BMeshAware:
-            addUvLayerBMesh(obname, me, texverts, texfaces)
-        else:
-            addUvLayerNoBMesh(obname, me, texverts, texfaces)
+        addUvLayerBMesh(obname, me, texverts, texfaces)
 
     scn.objects.link(ob)
     ob.select = True

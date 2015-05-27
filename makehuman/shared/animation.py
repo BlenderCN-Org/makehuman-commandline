@@ -42,6 +42,7 @@ Data handlers for skeletal animation.
 import math
 import numpy as np
 import log
+import makehuman
 
 
 INTERPOLATION = {
@@ -49,6 +50,9 @@ INTERPOLATION = {
     'LINEAR': 1,
     'LOG':    2
 }
+
+# TODO allow saving AnimationTrack to binary file
+# TODO allow saving VertexBoneWeights to binary file
 
 class AnimationTrack(object):
 
@@ -68,6 +72,8 @@ class AnimationTrack(object):
             ordered in breadth-first fashion.
         """
         self.name = name
+        self.description = "%s animation" % name
+        self.license = makehuman.getAssetLicense()
         self.dataLen = len(poseData)
         self.nFrames = nFrames
         self.nBones = self.dataLen/nFrames
@@ -430,6 +436,11 @@ class VertexBoneWeights(object):
 
         self._compiled = {}
 
+        self.name = ""
+        self.version = ""
+        self.license = makehuman.getAssetLicense()
+        self.description = ""
+
     @staticmethod
     def fromFile(filename, vertexCount=None, rootBone="root"):
         """
@@ -439,7 +450,46 @@ class VertexBoneWeights(object):
         import json
         weightsData = json.load(open(filename, 'rb'), object_pairs_hook=OrderedDict)
         log.message("Loaded vertex weights %s from file %s", weightsData.get('name', 'unnamed'), filename)
-        return VertexBoneWeights(weightsData['weights'], vertexCount, rootBone)
+        result = VertexBoneWeights(weightsData['weights'], vertexCount, rootBone)
+        result.license.fromJson(weightsData)
+        result.name = weightsData.get('name', result.name)
+        result.version = weightsData.get('version', result.version)
+        result.description = weightsData.get('description', result.description)
+        return result
+
+    def toFile(self, filename):
+        """
+        Save vertex to bone weights to a file.
+        """
+        import json
+
+        def _format_output(data):
+            """
+            Conversion from internal dict format to the format used in the JSON
+            data files, the opposite transformation of _build_vertex_weights_data
+
+            Input format:
+                { "bone_name": ([v_idx, ...], [v_weight, ...]), ... }
+
+            Output format:
+                { "bone_name": [(v_idx, v_weight), ...], ... }
+            """
+            from collections import OrderedDict
+            result = OrderedDict()
+            for bone_name, (v_idxs, v_wghts) in data.items():
+                result[bone_name] = zip(v_idxs.tolist(), v_wghts.tolist())
+            return result
+
+        jsondata = {'weights': _format_output(self.data),
+                    'name': self.name,
+                    'description': self.description,
+                    'version': self.version
+                   }
+        jsondata.update(self.license.asDict())
+
+        f = open(filename, 'w')
+        json.dump(jsondata, f, indent=4, separators=(',', ': '))
+        f.close()
 
     def create(self, data, vertexCount=None, rootBone=None):
         """
@@ -711,7 +761,7 @@ class AnimatedMesh(object):
         self.__inPlace = False  # Animate in place (ignore translation component of animation)
         self.onlyAnimateVisible = False  # Only animate visible meshes (note: enabling this can have undesired consequences!)
 
-    def setSkeleton(self, skel):
+    def setBaseSkeleton(self, skel):
         self.__skeleton = skel
         self.removeAnimations(update=False)
         self.resetCompiledWeights()
@@ -771,7 +821,7 @@ class AnimatedMesh(object):
     def setAnimateInPlace(self, enable):
         self.__inPlace = enable
 
-    def getSkeleton(self):
+    def getBaseSkeleton(self):
         return self.__skeleton
 
     def addBoundMesh(self, mesh, vertexToBoneMapping):
@@ -869,7 +919,7 @@ class AnimatedMesh(object):
         return self._posed and self.isPoseable()
 
     def isPoseable(self):
-        return bool(self.__currentAnim and self.getSkeleton())
+        return bool(self.__currentAnim and self.getBaseSkeleton())
 
     @property
     def posed(self):
@@ -882,7 +932,7 @@ class AnimatedMesh(object):
         """
         self.setActiveAnimation(None)
         self.__playTime = 0.0
-        if self.getSkeleton():
+        if self.getBaseSkeleton():
             self.refreshPose(updateIfInRest=update)
         elif update:
             self.resetTime()
@@ -912,12 +962,12 @@ class AnimatedMesh(object):
         is advised for static poses only.
         """
         if self.isPosed():
-            if not self.getSkeleton():
+            if not self.getBaseSkeleton():
                 return
 
             if not self.__currentAnim.isBaked():
                 # Ensure animation is baked for fast skinning
-                self.__currentAnim.bake(self.getSkeleton())
+                self.__currentAnim.bake(self.getBaseSkeleton())
 
             poseState = self.getPoseState()
 
@@ -934,12 +984,12 @@ class AnimatedMesh(object):
                 try:
                     if not self.__currentAnim.isBaked():
                         # Old slow way of skinning
-                        self.getSkeleton().setPose(poseState)
-                        posedCoords = self.getSkeleton().skinMesh(self.__originalMeshCoords[idx], self.__vertexToBoneMaps[idx].data)
+                        self.getBaseSkeleton().setPose(poseState)
+                        posedCoords = self.getBaseSkeleton().skinMesh(self.__originalMeshCoords[idx], self.__vertexToBoneMaps[idx].data)
                     else:
                         if not self.__vertexToBoneMaps[idx].isCompiled(6):
                             log.debug("Compiling vertex bone weights for %s", mesh.name)
-                            self.__vertexToBoneMaps[idx].compileData(self.getSkeleton(), 6)
+                            self.__vertexToBoneMaps[idx].compileData(self.getBaseSkeleton(), 6)
 
                         # New fast skinnig approach
                         posedCoords = skinMesh(self.__originalMeshCoords[idx], self.__vertexToBoneMaps[idx].compiled(6), poseState)
@@ -951,10 +1001,10 @@ class AnimatedMesh(object):
 
             # Adapt the bones of the skeleton to match current skinned pose (slower, should only be used for static poses)
             if syncSkeleton and self.__currentAnim.isBaked():
-                self.getSkeleton().setPose(self.getPoseState(noBake=True))
+                self.getBaseSkeleton().setPose(self.getPoseState(noBake=True))
         else:
-            if self.getSkeleton() and syncSkeleton:
-                self.getSkeleton().setToRestPose()
+            if self.getBaseSkeleton() and syncSkeleton:
+                self.getBaseSkeleton().setToRestPose()
             for idx,mesh in enumerate(self.__meshes):
                 self._updateMeshVerts(mesh, self.__originalMeshCoords[idx])
 
@@ -984,14 +1034,14 @@ class AnimatedMesh(object):
         self.__originalMeshCoords[rIdx][:,:3] = coord[:,:3]
 
     def refreshPose(self, updateIfInRest=False, syncSkeleton=True):
-        if not self.getSkeleton():
+        if not self.getBaseSkeleton():
             self.resetToRestPose()
         if updateIfInRest or self.isPosed():
             self._pose(syncSkeleton=syncSkeleton)
-        elif syncSkeleton and self.getSkeleton():
+        elif syncSkeleton and self.getBaseSkeleton():
             # Do not do the skinning (which is trivial), but nonetheless ensure that the skeleton's
             # pose state is restored to rest
-            self.getSkeleton().setToRestPose()
+            self.getBaseSkeleton().setToRestPose()
 
 def skinMesh(coords, compiledVertWeights, poseData):
     """

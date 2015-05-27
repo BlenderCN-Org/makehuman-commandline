@@ -52,6 +52,15 @@ versionSub = ""                         # Short version description
 meshVersion = "hm08"                    # Version identifier of the basemesh
 ################################################################################
 
+__author__ = "Manuel Bastioni, Jonas Hauquier, Joel Palmius, Glynn Clements, Thomas Larsson et al."
+__copyright__ = "Copyright 2001-2015, MakeHuman Project"
+__credits__ = ["See http://www.makehuman.org/halloffame"]
+__license__ = "AGPLv3"
+__maintainer__ = "Joel Palmius, Jonas Hauquier"
+__email__ = "dev@makehuman.org"
+__status__ = "Production" if release else "Development"
+
+
 def getVersionDigitsStr():
     """
     String representation of the version number only (no additional info)
@@ -86,11 +95,11 @@ def getVersion():
 
 version = getVersion()  # For backward compat.
 
-def getVersionStr(verbose=True):
+def getVersionStr(verbose=True, full=False):
     """
     Verbose version as string, for displaying and information
     """
-    if isRelease():
+    if isRelease() and not full:
         return _versionStr()
     else:
         if 'HGREVISION' not in os.environ:
@@ -115,7 +124,7 @@ def getBasemeshVersion():
     """
     return meshVersion
 
-def unicode(msg):
+def unicode(msg, *args, **kwargs):
     """
     Override default unicode constructor to try and resolve some issues with
     mismatched string codecs.
@@ -123,7 +132,7 @@ def unicode(msg):
     """
     try:
         # First attempt the builtin unicode() function without interference
-        return __builtins__.unicode(msg)
+        return __builtins__.unicode(msg, *args, **kwargs)
     except:
         pass
     try:
@@ -145,7 +154,7 @@ def unicode(msg):
     try:
         # Attempt using filesystem encoding
         import sys
-        return __builtins__.unicode(msg, encoding=sys.getfilesystemencoding)
+        return __builtins__.unicode(msg, encoding=sys.getfilesystemencoding())
     except:
         pass
     try:
@@ -328,7 +337,7 @@ def get_hg_revision():
         os.environ['HGNODEID'] = str(version_.split(':')[1])
         os.environ['HGREVISION_SOURCE'] = "data/VERSION static revision data"
     elif not isBuild():
-        print >> sys.stderr,  u"NO VERSION file detected retrieving revision info from HG"
+        print >> sys.stderr,  u"NO VERSION file detected, retrieving revision info from HG"
         # Set HG rev in environment so it can be used elsewhere
         hgrev = get_hg_revision_1()
         print >> sys.stderr,  u"Detected HG revision: r%s (%s)" % (hgrev[0], hgrev[1])
@@ -484,30 +493,161 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+The MakeHuman source and data are released under the AGPL license.
+This also includes everything that is exported from or by MakeHuman. 
+However, respecting a set of conditions (which are explained in section 
+C of license.txt), you are allowed to instead use the CC0 license 
+for exports. 
 
-MakeHuman's source code and its mesh data is distributed freely under 
-the AGPL3 license (see license.txt). Content created using the MakeHuman 
-application is released under the liberal CC0 license. For more details, 
-refer to these pages:
-
-    http://www.makehuman.org/doc/node/the_makehuman_application.html
-    http://www.makehuman.org/doc/node/makehuman_mesh_license.html
+The human readable explanation of the license terms is here: 
+    http://www.makehuman.org/content/license_explanation.html
 
 Licenses for dependencies are included in the licenses folder.
 
 
-For further help, have a look at our documentation at 
+For further help, have a look at our documentation at:
     http://www.makehuman.org/documentation
-Frequently asked questions are found at
+Frequently asked questions are found at:
     http://www.makehuman.org/faq
 
 
-The MakeHuman team can be contacted at http://www.makehuman.org
-If you have other questions, feel free to ask them on our forums at 
+The MakeHuman team can be contacted at dev@makehuman.org
+If you have other questions, feel free to ask them on our forums at:
     http://www.makehuman.org/forum/
-Bugs can be reported on the project's bug tracker
+Bugs can be reported on the project's bug tracker:
     http://bugtracker.makehuman.org
 """
+
+
+class LicenseInfo(object):
+    """
+    License information for MakeHuman assets.
+    If no properties are changed, the license object retrieved specifies
+    the licensing information that applies to the assets included in the
+    official MakeHuman release.
+    We consider assets to be the basemesh, targets, proxy definitions and their
+    fitting data, in general all the files in the data folder with the exclusion
+    of the data in the form as retained by the official exporters to which the
+    CC0 exception clause applies.
+    Assets created by third parties can be bound to different licensing conditions,
+    which is why properties can be set as a dict of format:
+        {"author": ..., "license": ..., "copyright": ..., "homepage": ...}
+    """
+
+    def __init__(self):
+        """Create the default MakeHuman asset license. Can be modified for
+        user-created assets.
+        """
+        self.author = "MakeHuman Team"
+        self.license = "AGPL3 (see also http://www.makehuman.org/doc/node/external_tools_license.html)"
+        self.homepage = "http://www.makehuman.org"
+        self.copyright = "(c) MakeHuman.org 2001-2015"
+        self._keys = ["author", "license", "copyright", "homepage"]
+        self._customized = False
+
+    @property
+    def properties(self):
+        return list(self._keys)
+
+    def setProperty(self, name, value):
+        if name in self._keys:
+            if getattr(self, name) != value:
+                self._customized = True
+                object.__setattr__(self, name, value)
+
+    def __setattr__(self, name, value):
+        # Assume that the LicenseInfo is not yet inited until self._customized is set
+        if not hasattr(self, '_customized'):
+            object.__setattr__(self, name, value)
+            return
+        if not hasattr(self, name):
+            raise KeyError("Not allowed to add new properties to LicenseInfo")
+        if name in self._keys:
+            self.setProperty(name, value)
+        else:
+            object.__setattr__(self, name, value)
+
+    def isCustomized(self):
+        return self._customized
+
+    def __str__(self):
+        return """MakeHuman asset license:
+Author: %s
+License: %s
+Copyright: %s
+Homepage: %s""" % (self.author, self.license, self.copyright, self.homepage)
+
+    def asDict(self):
+        return dict( [(pname, getattr(self, pname)) for pname in self._keys] )
+
+    def fromDict(self, propDict):
+        for prop,val in propDict.items():
+            self.setProperty(prop, val)
+        return self
+
+    def fromJson(self, json_data):
+        for prop in self.properties:
+            if prop in json_data:
+                self.setProperty(prop, json_data[prop])
+        return self
+
+    def copy(self):
+        result = LicenseInfo()
+        result.fromDict(self.asDict())
+        result._customized = self.isCustomized()
+        return result
+
+    def updateFromComment(self, commentLine):
+        commentLine = commentLine.strip()
+        if commentLine.startswith('#'):
+            commentLine = commentLine[1:]
+        elif commentLine.startswith('//'):
+            commentLine = commentLine[2:]
+        commentLine = commentLine.strip()
+
+        words = commentLine.split()
+        if len(words) < 1:
+            return
+
+        key = words[0]
+        value = " ".join(words[1:])
+
+        self.setProperty(key,value)
+
+    def toNumpyString(self):
+        def _packStringDict(stringDict):
+            import numpy as np
+            text = ''
+            index = []
+            for key,value in stringDict.items():
+                index.append(len(key))
+                index.append(len(value))
+                text += key + value
+            text = np.fromstring(text, dtype='S1')
+            index = np.array(index, dtype=np.uint32)
+            return text, index
+
+        return _packStringDict(self.asDict())
+
+    def fromNumpyString(self, text, index=None):
+        def _unpackStringDict(text, index):
+            stringDict = dict()
+            last = 0
+            for i in range(0,len(index), 2):
+                l_key = index[i]
+                l_val = index[i+1]
+
+                key = text[last:last+l_key].tostring()
+                val = text[last+l_key:last+l_key+l_val].tostring()
+                stringDict[key] = val
+
+                last += (l_key + l_val)
+            return stringDict
+
+        if index is None:
+            text, index = text
+        return self.fromDict( _unpackStringDict(text, index) )
+
 
 def getAssetLicense(properties=None):
     """
@@ -523,95 +663,128 @@ def getAssetLicense(properties=None):
     which is why properties can be set as a dict of format:
         {"author": ..., "license": ..., "copyright": ..., "homepage": ...}
     """
-    class LicenseInfo:
-        def __init__(self):
-            self.author = "MakeHuman Team"
-            self.license = "AGPL3 (see also http://www.makehuman.org/doc/node/external_tools_license.html)"
-            self.homepage = "http://www.makehuman.org"
-            self.copyright = "(c) MakeHuman.org 2001-2015"
-            self._keys = ["author", "license", "copyright", "homepage"]
-            self._customized = False
-
-        def setProperty(self, name, value):
-            if name in self._keys:
-                if getattr(self, name) != value:
-                    self._customized = True
-                    setattr(self, name, value)
-
-        def isCustomized(self):
-            return self._customized
-
-        def __str__(self):
-            return """MakeHuman asset license:
-    Author: %s
-    License: %s
-    Copyright: %s
-    Homepage: %s""" % (self.author, self.license, self.copyright, self.homepage)
-
-        def asDict(self):
-            return dict( [(pname, getattr(self, pname)) for pname in self._keys] )
-
-        def fromDict(self, propDict):
-            for prop,val in propDict.items():
-                self.setProperty(prop, val)
-            return self
-
-        def updateFromComment(self, commentLine):
-            commentLine = commentLine.strip()
-            if commentLine.startswith('#'):
-                commentLine = commentLine[1:]
-            elif commentLine.startswith('//'):
-                commentLine = commentLine[2:]
-            commentLine = commentLine.strip()
-
-            words = commentLine.split()
-            if len(words) < 1:
-                return
-
-            key = words[0]
-            value = " ".join(words[1:])
-
-            self.setProperty(key,value)
-
-        def toNumpyString(self):
-            def _packStringDict(stringDict):
-                import numpy as np
-                text = ''
-                index = []
-                for key,value in stringDict.items():
-                    index.append(len(key))
-                    index.append(len(value))
-                    text += key + value
-                text = np.fromstring(text, dtype='S1')
-                index = np.array(index, dtype=np.uint32)
-                return text, index
-
-            return _packStringDict(self.asDict())
-
-        def fromNumpyString(self, text, index=None):
-            def _unpackStringDict(text, index):
-                stringDict = dict()
-                last = 0
-                for i in range(0,len(index), 2):
-                    l_key = index[i]
-                    l_val = index[i+1]
-
-                    key = text[last:last+l_key].tostring()
-                    val = text[last+l_key:last+l_key+l_val].tostring()
-                    stringDict[key] = val
-
-                    last += (l_key + l_val)
-                return stringDict
-
-            if index is None:
-                text, index = text
-            return self.fromDict( _unpackStringDict(text, index) )
-
-
     result = LicenseInfo()
     if properties is not None:
         result.fromDict(properties)
         result._customized = False
+    return result
+
+def _wordwrap(text, chars_per_line=80):
+    """Split the lines of a text between whitespaces when a line length exceeds
+    the specified number of characters. Newlines already present in text are 
+    kept.
+    """
+    text_ = text.split('\n')
+    text = []
+    for l in text_:
+        if len(l) > chars_per_line:
+            l = l.split()
+            c = 0
+            i = 0
+            _prev_i = 0
+            while i < len(l):
+                while c <= chars_per_line and i < len(l):
+                    c += len(l[i])
+                    if i < (len(l) - 1):
+                        c += 1  # whitespace char
+                    i += 1
+                if c > chars_per_line:
+                    i -= 1
+                text.append(' '.join(l[_prev_i:i]))
+                _prev_i = i
+                c = 0
+        else:
+            text.append(l)
+    # drop any trailing empty lines
+    while not text[-1].strip():
+        text.pop()
+    return '\n'.join(text)
+
+def getCredits(richtext=False):
+    # TODO print contributors.txt
+    if richtext:
+        result = '<h2>MakeHuman credits</h2>'
+    else:
+        result = ''
+    return result + '''The list of people that made this software can be found at our website at 
+http://www.makehuman.org/halloffame'''
+
+def getSoftwareLicense(richtext=False):
+    import getpath
+    from codecs import open
+    lfile = getpath.getSysPath('license.txt')
+    if not os.path.isfile(lfile):
+        if richtext:
+            return '\n<span style="color: red;">Error: License file %s is not found, this is an incomplete MakeHuman distribution!</span>\n' % lfile
+        else:
+            return "Error: License file %s is not found, this is an incomplete MakeHuman distribution!" % lfile
+    f = open(lfile, encoding='utf-8')
+    text = f.read()
+    f.close()
+    if richtext:
+        result = '<h2>MakeHuman software license</h2>'
+    else:
+        result = ""
+    return result + _wordwrap(text)
+
+def getThirdPartyLicenses(richtext=False):
+    import getpath
+    from codecs import open
+    from collections import OrderedDict
+    def _title(name, url, license):
+        if richtext:
+            return '<a id="%s"><h3>%s</h3></a>%s<br>Licensed under %s license.<br>' % (name, name, url, license)
+        else:
+            return "%s (%s) licensed under %s license." % (name, url, license)
+
+    def _error(text):
+        if richtext:
+            return '<span style="color: red;">%s</span>' % text
+        else:
+            return text
+
+    def _block(text):
+        if richtext:
+            return '%s<hr style="border: 1px solid #ffa02f;">' % text
+            #return '%s<div style="border: none; background-color #ffa02f; height: 1px; width: 100%%">a</div>' % text
+        else:
+            return text
+
+    if richtext:
+        result = '<h2>Third-party licenses</h2>'
+    else:
+        result = ""
+    result += """MakeHuman includes a number of third part software components, which have 
+their own respective licenses. We express our gratitude to the developers of
+those libraries, without which MakeHuman would not have been made possible.
+Here follows a list of the third-party open source libraries that MakeHuman
+makes use of.\n"""
+    license_folder = getpath.getSysPath('licenses')
+    if not os.path.isdir(license_folder):
+        return result + _error("Error: external licenses folder is not found, this is an incomplete MakeHuman distribution!")
+    external_licenses = [ ("PyQt4", ("pyQt4-license.txt", "http://www.riverbankcomputing.co.uk", "GPLv3")),
+                          ("Qt4", ("qt4-license.txt", "http://www.qt-project.org", "LGPLv2.1")),
+                          ("Numpy", ("numpy-license.txt", "http://www.numpy.org", "BSD (3-clause)")),
+                          ("PyOpenGL", ("pyOpenGL-license.txt", "http://pyopengl.sourceforge.net", "BSD (3-clause)")),
+                          ("Transformations", ("transformations-license.txt", "http://www.lfd.uci.edu/~gohlke/", "BSD (3-clause)")),
+                          ("pyFBX", ("pyFbx-license.txt", "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/Autodesk_FBX", "GPLv2")),
+                          ("Python hglib", ("hglib-license.txt", "http://mercurial.selenic.com/wiki/PythonHglib", "MIT"))
+                        ]
+    external_licenses = OrderedDict(external_licenses)
+
+    for name, (lic_file, url, lic_type) in external_licenses.items():
+        result += _title(name, url, lic_type)
+
+        lfile = os.path.join(license_folder, lic_file)
+        if not os.path.isfile(lfile):
+            result += "\n%s\n" % _error("Error: License file %s is not found, this is an incomplete MakeHuman distribution!" % lfile)
+            continue
+        f = open(lfile, encoding='utf-8')
+        text = f.read()
+        f.close()
+        text = _wordwrap(text)
+        result += "\n%s\n" % _block(text)
+
     return result
 
 
