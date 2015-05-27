@@ -107,6 +107,8 @@ def save(human, filepath):
         exportCfg.setHuman(human)
         FBXExporter.exportFbx(filepath, config=exportCfg)
     elif filepath.lower().endswith(".mesh.xml"):
-        pass
+        exportCfg = OgreConfig()
+        exportCfg.setHuman(human)
+        OgreExporter.exportOgreMesh(filepath, config=exportCfg)
     else:
         raise RuntimeError("Only OBJ export is currently supported")
