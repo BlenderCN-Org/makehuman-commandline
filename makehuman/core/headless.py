@@ -52,7 +52,8 @@ import sys
 sys.path.append("./plugins")
 OBJExporter = (__import__("9_export_obj", fromlist = ["mh2obj"])).mh2obj
 ObjConfig = (__import__("9_export_obj", fromlist = ["ObjConfig"])).ObjConfig
-
+DAEExporter = (__import__("9_export_collada", fromlist = ["mh2collada"])).mh2collada
+DAEConfig = (__import__("9_export_collada", fromlist = ["DaeConfig"])).DaeConfig
 
 class ConsoleApp():
     def __init__(self):
@@ -80,12 +81,21 @@ def run(args):
     if 'PyOpenGL' in sys.modules.keys():
         log.warning("Debug test detected that OpenGL libraries were imported in the console version! This indicates bad separation from GUI.")
     if 'PyQt4' in sys.modules.keys():
-        log.warning("Debug test detected that Qt libraries were imported in the console version! This might indicate bad separation from GUI, but is currently normal because MH uses Qt as (only) back-end for loading images.")
+        log.warning("Debug test detected that Qt libraries were imported in the console version! This indicates bad separation from GUI (unless PIL is not installed, in which case PyQt is still used as image back-end).")
 
 def save(human, filepath):
-    if filepath.endswith("obj"):
+    # TODO allow specifying custom exporter options on commandline
+    if filepath.lower().endswith(".obj"):
         exportCfg = ObjConfig()
         exportCfg.setHuman(human)
         OBJExporter.exportObj(filepath, config=exportCfg)
+    elif filepath.lower().endswith(".dae"):
+        exportCfg = DAEConfig()
+        exportCfg.setHuman(human)
+        DAEExporter.exportCollada(filepath, config=exportCfg)
+    elif filepath.lower().endswith(".fbx"):
+        pass
+    elif filepath.lower().endswith(".mesh.xml"):
+        pass
     else:
         raise RuntimeError("Only OBJ export is currently supported")
