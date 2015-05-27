@@ -277,16 +277,17 @@ def addProxy(human, mhclofile, type):
             raise RuntimeError('Proxy file "%s" does not exist (%s).' % (mhclofile, type))
 
     import proxy
-    _proxy = proxy.readProxyFile(human, mhclofile, type=type.capitalize())
+    pxy = proxy.loadProxy(human, mhclofile, type=type.capitalize())
+    mesh,obj = pxy.loadMeshAndObject(human)
 
     if type == "proxymeshes":
-        human.setProxy(_proxy)
+        human.setProxy(pxy)
         return
 
-    mesh,obj = _proxy.loadMeshAndObject(human)
+    mesh,obj = pxy.loadMeshAndObject(human)
 
     if not mesh:
-        raise RuntimeError('Failed to load proxy mesh "%s"', _proxy.obj_file)
+        raise RuntimeError('Failed to load proxy mesh "%s"', pxy.obj_file)
 
     def _adaptProxyToHuman(pxy, obj):
         mesh = obj.getSeedMesh()
@@ -296,33 +297,25 @@ def addProxy(human, mhclofile, type):
         if obj.isSubdivided():
             obj.getSubdivisionMesh()
 
-    _adaptProxyToHuman(_proxy, obj)
+    _adaptProxyToHuman(pxy, obj)
+    obj.setSubdivided(human.isSubdivided())
 
-    # TODO oh so tedious...
     if type == "hair":
-        human.hairProxy = _proxy
-        human.hairObj = obj
+        human.hairProxy = pxy
     elif type == "eyes":
-        human.eyesProxy = _proxy
-        human.eyesObj = obj
-    elif type == "genitals":
-        human.genitalsProxy = _proxy
-        human.genitalsObj = obj
+        human.eyesProxy = pxy
     elif type == "eyebrows":
-        human.eyebrowsProxy = _proxy
-        human.eyebrowsObj = obj
+        human.eyebrowsProxy = pxy
     elif type == "eyelashes":
-        human.eyelashesProxy = _proxy
-        human.eyelashesObj = obj
+        human.eyelashesProxy = pxy
     elif type == "teeth":
-        human.teethProxy = _proxy
-        human.teethObj = obj
+        human.teethProxy = pxy
     elif type == "tongue":
-        human.tongueProxy = _proxy
-        human.tongueObj = obj
+        human.tongueProxy = pxy
     elif type == "clothes":
-        human.clothesProxies[_proxy.uuid] = _proxy
-        human.clothesObjs[_proxy.uuid] = obj
+        human.addClothesProxy(pxy)
+    else:
+        raise RuntimeError("Unknown proxy type: %s" % type)
 
 def addRig(human, rigfile):
     if not os.path.isfile(rigfile):
