@@ -58,6 +58,11 @@ OBJExporter = _load_from_plugin("9_export_obj", "mh2obj")
 ObjConfig = _load_from_plugin("9_export_obj", "ObjConfig")
 DAEExporter = _load_from_plugin("9_export_collada", "mh2collada")
 DAEConfig = _load_from_plugin("9_export_collada", "DaeConfig")
+FBXExporter = _load_from_plugin("9_export_fbx", "mh2fbx")
+FBXConfig = _load_from_plugin("9_export_fbx", "FbxConfig")
+OgreExporter = _load_from_plugin("9_export_ogre", "mh2ogre")
+OgreConfig = _load_from_plugin("9_export_ogre", "OgreConfig")
+
 
 class ConsoleApp():
     def __init__(self):
@@ -98,7 +103,9 @@ def save(human, filepath):
         exportCfg.setHuman(human)
         DAEExporter.exportCollada(filepath, config=exportCfg)
     elif filepath.lower().endswith(".fbx"):
-        pass
+        exportCfg = FBXConfig()
+        exportCfg.setHuman(human)
+        FBXExporter.exportFbx(filepath, config=exportCfg)
     elif filepath.lower().endswith(".mesh.xml"):
         pass
     else:
