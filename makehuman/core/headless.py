@@ -37,6 +37,9 @@ Abstract
 Implements the command-line version of MakeHuman.
 """
 
+import os
+import sys
+
 from core import G
 import guicommon
 import log
@@ -47,8 +50,6 @@ import humanmodifier
 import material
 import proxy
 
-
-import sys
 sys.path.append("./plugins")
 
 def _load_from_plugin(plugin_name, name):
@@ -93,6 +94,9 @@ def run(args):
         log.warning("Debug test detected that Qt libraries were imported in the console version! This indicates bad separation from GUI (unless PIL is not installed, in which case PyQt is still used as image back-end).")
 
 def save(human, filepath):
+    if not os.path.splitext(filepath)[1]:
+        raise RuntimeError("Specify a file extension for the output file to determine the export format to use.")
+
     # TODO allow specifying custom exporter options on commandline
     if filepath.lower().endswith(".obj"):
         exportCfg = ObjConfig()
@@ -111,4 +115,4 @@ def save(human, filepath):
         exportCfg.setHuman(human)
         OgreExporter.exportOgreMesh(filepath, config=exportCfg)
     else:
-        raise RuntimeError("Only OBJ export is currently supported")
+        raise RuntimeError("No export available for %s files." % os.path.splitext(filepath)[1])
