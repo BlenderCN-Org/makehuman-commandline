@@ -50,10 +50,14 @@ import proxy
 
 import sys
 sys.path.append("./plugins")
-OBJExporter = (__import__("9_export_obj", fromlist = ["mh2obj"])).mh2obj
-ObjConfig = (__import__("9_export_obj", fromlist = ["ObjConfig"])).ObjConfig
-DAEExporter = (__import__("9_export_collada", fromlist = ["mh2collada"])).mh2collada
-DAEConfig = (__import__("9_export_collada", fromlist = ["DaeConfig"])).DaeConfig
+
+def _load_from_plugin(plugin_name, name):
+    return getattr((__import__(plugin_name, fromlist = [name])), name)
+
+OBJExporter = _load_from_plugin("9_export_obj", "mh2obj")
+ObjConfig = _load_from_plugin("9_export_obj", "ObjConfig")
+DAEExporter = _load_from_plugin("9_export_collada", "mh2collada")
+DAEConfig = _load_from_plugin("9_export_collada", "DaeConfig")
 
 class ConsoleApp():
     def __init__(self):
