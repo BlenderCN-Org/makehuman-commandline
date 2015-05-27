@@ -166,6 +166,8 @@ Available modifiers:
     #    print "\n".join(['  %s' % r for r in files])
     #    sys.exit()
 
+# TODO load default eyes when no eyes are specified?
+
 def applyModelingArguments(human, argOptions):
     """
     Apply the commandline argument options parsed by argparse to the human.
