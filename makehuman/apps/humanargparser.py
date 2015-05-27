@@ -76,6 +76,7 @@ def addModelingArguments(argparser):
     rigGroup = argparser.add_argument_group('Rig settings')
     rigGroup.add_argument("--listrigs", action="store_true", help="List the available rig types")
     rigGroup.add_argument("--rig", metavar="rigType", default=None, help="Setup a rig. (default: none)")
+    # TODO allow setting a pose
 
     # Material properties
     matGroup = argparser.add_argument_group('Material settings')
@@ -146,7 +147,7 @@ Available modifiers:
         sys.exit()
 
     if argOptions.get('listrigs', False):
-        files = _listDataFiles('rigs', ['.json'], onlySysData=True, recursive=False)
+        files = _listDataFiles('rigs', ['.mhskel'], onlySysData=True, recursive=False)
         print "Available rigs:"
         print "\n".join(['  %s' % r for r in files])
         sys.exit()
@@ -328,22 +329,24 @@ def addRig(human, rigfile):
         if not os.path.isfile(rigfile):
             #log.error("Rig file %s does not exist.", mhclofile)
             #return
-            raise RuntimeError('Rig file "%s" does not exist.' % mhclofile)
+            raise RuntimeError('Rig file "%s" does not exist.' % rigfile)
 
     import skeleton
-    from armature.options import ArmatureOptions
 
-    armature_options = ArmatureOptions()
+    if not human.getBaseSkeleton():
+        # TODO when starting in GUI mode, base skeleton will be loaded twice
+        base_skel = skeleton.load(getpath.getSysDataPath('rigs/default.mhskel'), human.meshData)
+        human.setBaseSkeleton(base_skel)
 
-    descr = armature_options.loadPreset(rigfile, None)    # TODO update skeleton library when in gui mode
-    # Load skeleton definition from options
-    human._skeleton, boneWeights = skeleton.loadRig(armature_options, human.meshData)
-    human._skeleton.options = armature_options
+    referenceRig = human.getBaseSkeleton()
 
-    # TODO this should be resolved in the future
-    def skeleton_getter():
-        return human._skeleton
-    human.getSkeleton = skeleton_getter
+    # TODO update skeleton library when in gui mode
+    skel = skeleton.load(rigfile, human.meshData)
+    skel.autoBuildWeightReferences(referenceRig)
+    vertexWeights = skel.getVertexWeights(referenceRig.getVertexWeights())
+    skel.addReferencePlanes(referenceRig)  # Not strictly needed for the new way in which we determine bone normals
+
+    human.setSkeleton(skel)
 
 def applyMaterial(matFile, obj):
     if not os.path.isfile(matFile):
