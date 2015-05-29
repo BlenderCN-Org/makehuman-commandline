@@ -194,7 +194,7 @@ def applyModelingArguments(human, argOptions):
     if argOptions.get("modifier", None) is not None:
         for mName, value in argOptions["modifier"]:
             try:
-                human.getModifier(mName).setValue(value)
+                human.getModifier(mName).setValue(float(value))
             except:
                 raise RuntimeError('No modifier named "%s" as specified by --modifier command. See --listmodifiers for list of acceptable options.' % mName)
 
