@@ -12,7 +12,8 @@ pyOpenGL        BSD (3-clause)      pyOpenGL-license.txt http://pyopengl.sourcef
 transformations BSD (3-clause)      transformations.txt  http://www.lfd.uci.edu/~gohlke/
 pyFBX           GPLv2               pyFbx-license.txt    http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/Autodesk_FBX
 
+
 Optional:
 
 hglib           MIT                 hglib-license.txt    http://mercurial.selenic.com/wiki/PythonHglib
-
+PIL             PIL License         PIL-license.txt      http://www.pythonware.com/products/pil/

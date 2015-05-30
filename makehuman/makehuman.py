@@ -424,32 +424,48 @@ def debug_dump():
         import log
         log.error("Could not create debug dump", exc_info=True)
 
+ADVANCED_ARGS = True
 def parse_arguments():
     if len(sys.argv) < 2:
         return dict()
 
     import argparse    # requires python >= 2.7
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="MakeHuman, an open source tool for making 3D characters", epilog="MakeHuman - http://www.makehuman.org")
+
+    # Input argument (optional positional argument)
+    parser.add_argument("mhmFile", default=None, nargs='?', help="Load human from .mhm file (optional, GUI mode only)")
 
     # optional arguments
     parser.add_argument('-v', '--version', action='version', version=getVersionStr())
     parser.add_argument("--license", action="store_true", help="Show full copyright notice and software license")
-    parser.add_argument("--noshaders", action="store_true", help="disable shaders")
-    parser.add_argument("--nomultisampling", action="store_true", help="disable multisampling (used for anti-aliasing and alpha-to-coverage transparency rendering)")
-    parser.add_argument("--debugopengl", action="store_true", help="enable OpenGL error checking and logging (slow)")
-    parser.add_argument("--fullloggingopengl", action="store_true", help="log all OpenGL calls (very slow)")
-    parser.add_argument("--debugnumpy", action="store_true", help="enable numpy runtime error messages")
-    if not isRelease():
-        parser.add_argument("-t", "--runtests", action="store_true", help="run test suite (for developers)")
 
-    # optional positional arguments
-    parser.add_argument("mhmFile", default=None, nargs='?', help=".mhm file to load (optional)")
+    if ADVANCED_ARGS:
+        # Output options
+        outputGroup = parser.add_argument_group('Output options', description="Result in no-GUI mode operation")
+        outputGroup.add_argument("-o", "--output", default=None, help="File to export to, extension determines format. If set, no GUI is started.")
+
+    # Debug options
+    debugGroup = parser.add_argument_group('Debug options', description="For testing, debugging and problem solving")
+    debugGroup.add_argument("--noshaders", action="store_true", help="disable shaders")
+    debugGroup.add_argument("--nomultisampling", action="store_true", help="disable multisampling (used for anti-aliasing and alpha-to-coverage transparency rendering)")
+    debugGroup.add_argument("--debugopengl", action="store_true", help="enable OpenGL error checking and logging (slow)")
+    debugGroup.add_argument("--fullloggingopengl", action="store_true", help="log all OpenGL calls (very slow)")
+    debugGroup.add_argument("--debugnumpy", action="store_true", help="enable numpy runtime error messages")
+    if not isRelease():
+        debugGroup.add_argument("-t", "--runtests", action="store_true", help="run test suite (for developers)")
+
+    if ADVANCED_ARGS:
+        import humanargparser
+        humanargparser.addModelingArguments(parser)
 
     argOptions = vars(parser.parse_args())
 
     if argOptions.get('license', False):
         print "\n" + getCopyrightMessage() + "\n"
         sys.exit(0)
+
+    if ADVANCED_ARGS:
+        humanargparser.validate(argOptions)
 
     return argOptions
 
@@ -773,6 +789,7 @@ makes use of.\n"""
 
 
 def main():
+    print "MakeHuman v%s" % getVersionDigitsStr()
     print getCopyrightMessage(short=True) + "\n"
 
     try:
@@ -807,10 +824,18 @@ def main():
         # Suppress runtime errors
         numpy.seterr(all = 'ignore')
 
-    # Here pyQt and PyOpenGL will be imported
-    from mhmain import MHApplication
-    application = MHApplication()
-    application.run()
+    # -o or --output option given -> run in headless mode
+    runHeadless = bool( args.get("output", None) )
+
+    if runHeadless:
+        import headless
+        headless.run(args)
+    else:
+        # Here pyQt and PyOpenGL will be imported
+        from mhmain import MHApplication
+
+        application = MHApplication()
+        application.run()
 
     #import cProfile
     #cProfile.run('application.run()')

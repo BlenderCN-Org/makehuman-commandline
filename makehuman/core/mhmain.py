@@ -819,6 +819,10 @@ class MHApplication(gui3d.Application, mh.Application):
                 import testsuite
                 testsuite.runAll()
 
+            # Apply options from advanced commandline args to human
+            import humanargparser
+            humanargparser.applyModelingArguments(self.selectedHuman, self.args)
+
     # Events
     def onStart(self, event):
         self.startupSequence()
